@@ -29,6 +29,8 @@ qqmlcbot/
 │   └── mcsm_control.py  # MCSM 面板命令
 ├── utils/
 │   └── mc_utils.py      # MC 服务器查询工具函数
+├── scripts/
+│   └── create_command_panel.py  # 创建指定群的指令面板（一次性执行）
 ├── .env                 # 环境变量（敏感信息，勿提交 Git）
 ├── requirements.txt     # Python 依赖
 └── README.md
@@ -56,6 +58,8 @@ pip install -r requirements.txt
 QQ_BOT_APPID=102090462
 QQ_BOT_SECRET=你的AppSecret
 SUPERUSERS=QQ号1,QQ号2
+# 创建指令面板的目标群 OpenID，多个值用英文逗号分隔
+QQ_GROUP_OPENIDS=openid_group_001,openid_group_002
 ```
 
 ### 4. 启动
@@ -65,6 +69,31 @@ python main.py
 ```
 
 成功启动后日志会显示 "机器人已上线！"。
+
+### 5. 创建群聊指令面板（可选）
+
+
+指令面板只需创建一次，不要放在机器人启动流程中重复调用。脚本使用 QQ OpenAPI 的 `POST /v2/panels` 接口创建面板。业务消息记录写入 `mlcbot.log`；`botpy.log` 仅记录 SDK 的连接和鉴权信息。QQ 公域机器人只会收到 **@机器人** 的群消息，普通群聊消息不会下发给机器人，也不会写入日志。
+
+先在目标群中 `@机器人 list` 发送任意消息，再从 `mlcbot.log` 中复制对应的群 OpenID：
+
+```text
+[群消息] group=实际的group_openid user=... content=...
+```
+
+将该值填入 `.env` 的 `QQ_GROUP_OPENIDS` 后，先预览请求内容：
+
+```bash
+python scripts/create_command_panel.py --dry-run
+```
+
+确认无误后创建面板：
+
+```bash
+python scripts/create_command_panel.py
+```
+
+面板包含 `list`、`视奸`、`ip`、`status`、`服务器地图` 和 `指令帮助`。MCSM 管理指令不会显示在公共面板中。
 
 ## 测试方法
 

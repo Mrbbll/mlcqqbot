@@ -11,8 +11,17 @@ load_dotenv()
 QQ_BOT_APPID = os.getenv("QQ_BOT_APPID", "102090462")
 QQ_BOT_SECRET = os.getenv("QQ_BOT_SECRET", "")
 
+
+def get_env_list(name: str) -> list[str]:
+    """读取以英文逗号分隔的环境变量，忽略空值和两侧空白。"""
+    return [value.strip() for value in os.getenv(name, "").split(",") if value.strip()]
+
+
 # ==================== 超级用户 ====================
-SUPERUSERS = os.getenv("SUPERUSERS", "").split(",") if os.getenv("SUPERUSERS") else []
+SUPERUSERS = get_env_list("SUPERUSERS")
+
+# ==================== QQ 群聊指令面板 ====================
+QQ_GROUP_OPENIDS = get_env_list("QQ_GROUP_OPENIDS")
 
 # ==================== MCSM 面板配置 ====================
 MCSM_PANEL_URL = "http://127.0.0.1:23333"

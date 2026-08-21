@@ -8,6 +8,8 @@ Minecraft 服务器查询机器人，移植自 NoneBot 项目
 import re
 import asyncio
 import traceback
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 
 import logging
 
@@ -26,8 +28,34 @@ from handlers.mcsm_control import (
 )
 
 # 日志
-_log = logging.getLogger("mlcbot")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+
+def configure_app_logger() -> logging.Logger:
+    """为业务日志配置独立文件，避免与 botpy SDK 日志混淆。"""
+    logger = logging.getLogger("mlcbot")
+    logger.setLevel(logging.INFO)
+
+    log_path = Path(__file__).with_name("mlcbot.log").resolve()
+    has_file_handler = any(
+        isinstance(handler, TimedRotatingFileHandler)
+        and Path(handler.baseFilename).resolve() == log_path
+        for handler in logger.handlers
+    )
+    if not has_file_handler:
+        handler = TimedRotatingFileHandler(
+            log_path,
+            when="D",
+            backupCount=7,
+            encoding="utf-8",
+        )
+        handler.setFormatter(logging.Formatter(LOG_FORMAT))
+        logger.addHandler(handler)
+
+    return logger
+
+
+_log = configure_app_logger()
 
 
 # ==================== 命令解析 ====================
@@ -63,6 +91,8 @@ async def route_command(content: str, user_id: str) -> str | None:
     返回响应文本，如果没有匹配的命令返回 None
     """
     content = clean_message(content)
+    if content and not content.startswith("/"):
+        content = f"/{content}"
 
     # 帮助
     if content.startswith("/指令帮助"):
@@ -115,6 +145,12 @@ class MLCBot(Client):
 
     async def on_ready(self):
         _log.info(f"机器人已上线！AppID: {QQ_BOT_APPID}")
+
+    async def on_group_add_robot(self, event):
+        """记录机器人加入群聊时下发的群 OpenID。"""
+        _log.info(
+            f"[机器人入群] group={event.group_openid} operator={event.op_member_openid}"
+        )
 
     async def on_group_at_message_create(self, message: GroupMessage):
         """处理群聊 @机器人 消息"""

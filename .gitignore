@@ -7,3 +7,7 @@ venv/
 dist/
 build/
 botpy.log*
+mlcbot.log*
+.vscode
+*.bin
+*.html
