@@ -26,6 +26,7 @@ from handlers.host_status import handle_status
 from handlers.mcsm_control import (
     handle_execute, handle_open, handle_stop, handle_kill,
 )
+from utils.markdown import markdown_payload
 
 # 日志
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -73,7 +74,7 @@ def should_reply(content: str) -> bool:
     """检查消息是否包含有效指令，决定是否回复"""
     content = clean_message(content)
     commands = [
-        "list", "视奸", "ip", "status",
+        "list", "视奸", "ip", "status", "map", "help",
         "服务器地图", "指令帮助",
         "/执行", "/开启", "/停止", "/终止",
     ]
@@ -94,12 +95,12 @@ async def route_command(content: str, user_id: str) -> str | None:
     if content and not content.startswith("/"):
         content = f"/{content}"
 
-    # 帮助
-    if content.startswith("/指令帮助"):
+    # 帮助（兼容指令面板的 help）
+    if content.startswith(("/指令帮助", "/help")):
         return await handle_help()
 
-    # 服务器地图
-    if content.startswith("/服务器地图"):
+    # 服务器地图（兼容指令面板的 map）
+    if content.startswith(("/服务器地图", "/map")):
         return await handle_map()
 
     # list - 全部服务器状态
@@ -163,10 +164,10 @@ class MLCBot(Client):
         try:
             reply_text = await route_command(content, user_id)
             if reply_text:
-                await message.reply(content=reply_text)
+                await message.reply(**markdown_payload(reply_text))
         except Exception:
             _log.error(f"处理群消息异常: {traceback.format_exc()}")
-            await message.reply(content="⚠️ 处理请求时发生错误，请稍后再试")
+            await message.reply(**markdown_payload("⚠️ **处理请求时发生错误**\n\n请稍后再试"))
 
     async def on_c2c_message_create(self, message: C2CMessage):
         """处理私聊消息"""
@@ -178,10 +179,10 @@ class MLCBot(Client):
         try:
             reply_text = await route_command(content, user_id)
             if reply_text:
-                await message.reply(content=reply_text)
+                await message.reply(**markdown_payload(reply_text))
         except Exception:
             _log.error(f"处理私聊异常: {traceback.format_exc()}")
-            await message.reply(content="⚠️ 处理请求时发生错误，请稍后再试")
+            await message.reply(**markdown_payload("⚠️ **处理请求时发生错误**\n\n请稍后再试"))
 
 
 # ==================== 启动入口 ====================

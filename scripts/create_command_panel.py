@@ -21,6 +21,7 @@ COMMAND_PANEL_ITEMS = [
     {"type": "command", "name": "status", "desc": "查看宿主机运行状态"},
     {"type": "command", "name": "map", "desc": "查看地图和文档链接"},
     {"type": "command", "name": "help", "desc": "查看全部可用指令"},
+    {"type": "command", "name": "执行", "desc":"执行命令到实例"}
 ]
 
 

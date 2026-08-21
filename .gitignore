@@ -11,3 +11,4 @@ mlcbot.log*
 .vscode
 *.bin
 *.html
+tests
