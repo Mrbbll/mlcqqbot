@@ -27,6 +27,7 @@ from handlers.mcsm_control import (
     handle_execute, handle_open, handle_stop, handle_kill,
 )
 from utils.markdown import markdown_payload
+from utils.keyboard import command_from_interaction, help_keyboard_payload
 
 # 日志
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -139,6 +140,22 @@ async def route_command(content: str, user_id: str) -> str | None:
     return None
 
 
+def is_help_command(content: str) -> bool:
+    """判断消息是否为帮助命令，用于给帮助回复附加内联键盘。"""
+    content = clean_message(content)
+    if content and not content.startswith("/"):
+        content = f"/{content}"
+    return content.startswith(("/指令帮助", "/help"))
+
+
+def command_reply_payload(content: str, reply_text: str, user_id: str = "") -> dict:
+    """构造命令回复；帮助命令额外附带公开查询按钮。"""
+    payload = markdown_payload(reply_text)
+    if is_help_command(content):
+        payload["keyboard"] = help_keyboard_payload(user_id)
+    return payload
+
+
 # ==================== Bot 客户端 ====================
 
 class MLCBot(Client):
@@ -164,7 +181,10 @@ class MLCBot(Client):
         try:
             reply_text = await route_command(content, user_id)
             if reply_text:
-                await message.reply(**markdown_payload(reply_text))
+                payload = command_reply_payload(content, reply_text, user_id)
+                if "keyboard" in payload:
+                    _log.info("[帮助键盘] group=%s user=%s buttons=5", group_id, user_id)
+                await message.reply(**payload)
         except Exception:
             _log.error(f"处理群消息异常: {traceback.format_exc()}")
             await message.reply(**markdown_payload("⚠️ **处理请求时发生错误**\n\n请稍后再试"))
@@ -179,10 +199,61 @@ class MLCBot(Client):
         try:
             reply_text = await route_command(content, user_id)
             if reply_text:
-                await message.reply(**markdown_payload(reply_text))
+                payload = command_reply_payload(content, reply_text, user_id)
+                if "keyboard" in payload:
+                    _log.info("[帮助键盘] c2c user=%s buttons=5", user_id)
+                await message.reply(**payload)
         except Exception:
             _log.error(f"处理私聊异常: {traceback.format_exc()}")
             await message.reply(**markdown_payload("⚠️ **处理请求时发生错误**\n\n请稍后再试"))
+
+    async def _send_interaction_reply(self, interaction, payload: dict) -> None:
+        """把按钮命令的结果发送回触发按钮的群聊或私聊。"""
+        if interaction.group_openid:
+            await self.api.post_group_message(
+                group_openid=interaction.group_openid,
+                **payload,
+            )
+        elif interaction.user_openid:
+            await self.api.post_c2c_message(
+                openid=interaction.user_openid,
+                **payload,
+            )
+        else:
+            _log.warning("按钮事件缺少群 OpenID 和用户 OpenID: %r", interaction)
+
+    async def on_interaction_create(self, interaction):
+        """处理帮助消息中的内联按钮点击。"""
+        # 官方规定只有 type=11 消息按钮事件需要确认；其他互动事件不处理。
+        if interaction.type != 11:
+            return
+
+        command = command_from_interaction(interaction)
+
+        # 先确认按钮事件，再执行可能耗时的服务器查询，避免回调超时。
+        try:
+            await self.api.on_interaction_result(interaction.id, 0 if command else 1)
+        except Exception:
+            _log.error(f"确认按钮事件异常: {traceback.format_exc()}")
+
+        if not command:
+            _log.warning("收到未识别的按钮事件: %r", interaction)
+            return
+
+        user_id = interaction.group_member_openid or interaction.user_openid or ""
+        try:
+            reply_text = await route_command(command, user_id)
+            if reply_text:
+                await self._send_interaction_reply(
+                    interaction,
+                    command_reply_payload(command, reply_text),
+                )
+        except Exception:
+            _log.error(f"处理按钮事件异常: {traceback.format_exc()}")
+            await self._send_interaction_reply(
+                interaction,
+                markdown_payload("⚠️ **处理请求时发生错误**\n\n请稍后再试"),
+            )
 
 
 # ==================== 启动入口 ====================
@@ -196,6 +267,7 @@ def main():
     # 设置 Intents — public_messages 涵盖群聊 @消息和私聊消息
     intents = Intents.none()
     intents.public_messages = True
+    intents.interaction = True
 
     client = MLCBot(intents=intents)
     _log.info(f"正在启动机器人... AppID: {QQ_BOT_APPID}")

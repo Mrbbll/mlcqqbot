@@ -11,7 +11,7 @@ from utils.markdown import inline_code
 
 async def handle_status() -> str:
     """处理 status 命令 — 返回宿主机运行状态。"""
-    lines = ["# 宿主机运行状态", ""]
+    lines = ["### 宿主机运行状态", ""]
 
     # CPU 核心数
     logical_cores = psutil.cpu_count()

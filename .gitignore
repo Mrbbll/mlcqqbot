@@ -12,3 +12,4 @@ mlcbot.log*
 *.bin
 *.html
 tests
+.claude

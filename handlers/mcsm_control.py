@@ -141,7 +141,7 @@ async def handle_execute(args: str, user_id: str) -> str:
     reason = get_reason(response)
 
     return (
-        "# 📤 MCSM 命令执行结果\n\n"
+        "### 📤 命令执行结果\n\n"
         f"- **实例**：{inline_code(instance_name)}\n"
         f"- **命令**：{inline_code(command_content)}\n"
         f"- **结果**：{escape_markdown(reason)}"
@@ -163,7 +163,7 @@ async def handle_open(args: str, user_id: str) -> str:
 
     response = send_mcsm_open(instance_uuid, DEFAULT_DAEMON_ID)
     reason = get_reason(response)
-    return format_operation_result("▶️ MCSM 开启结果", instance_name, reason)
+    return format_operation_result("▶️ 实例开启结果", instance_name, reason)
 
 
 async def handle_stop(args: str, user_id: str) -> str:
@@ -181,7 +181,7 @@ async def handle_stop(args: str, user_id: str) -> str:
 
     response = send_mcsm_stop(instance_uuid, DEFAULT_DAEMON_ID)
     reason = get_reason(response)
-    return format_operation_result("⏹️ MCSM 停止结果", instance_name, reason)
+    return format_operation_result("⏹️ 实例停止结果", instance_name, reason)
 
 
 async def handle_kill(args: str, user_id: str) -> str:
@@ -199,4 +199,4 @@ async def handle_kill(args: str, user_id: str) -> str:
 
     response = send_mcsm_kill(instance_uuid, DEFAULT_DAEMON_ID)
     reason = get_reason(response)
-    return format_operation_result("⏏️ MCSM 终止结果", instance_name, reason)
+    return format_operation_result("⏏️ 实例终止结果", instance_name, reason)
