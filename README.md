@@ -16,19 +16,27 @@
 | `@Bot /开启 <实例>` | MCSM 开启实例（仅管理员） |
 | `@Bot /停止 <实例>` | MCSM 停止实例（仅管理员） |
 | `@Bot /终止 <实例>` | MCSM 终止实例（仅管理员） |
+| `@Bot /抽奖` | 创建 0–30 分钟随机禁言抽奖按钮（仅管理员） |
 
 ## 项目结构
 
 ```
 qqmlcbot/
-├── main.py              # 入口 + Bot Client + 命令路由
+├── main.py              # 日志配置与启动入口
+├── bot_client.py        # QQ 事件适配层
 ├── config.py            # 配置（AppID/Secret/MCSM/超级用户）
 ├── handlers/
 │   ├── server_query.py  # list/视奸/ip/服务器地图
 │   ├── host_status.py   # status 宿主机监控
-│   └── mcsm_control.py  # MCSM 面板命令
+│   ├── mcsm_control.py  # MCSM 面板命令
+│   ├── lottery.py       # 抽奖与群成员禁言
+│   ├── command_router.py # 命令路由
+│   └── interaction.py   # 按钮回调处理
 ├── utils/
-│   └── mc_utils.py      # MC 服务器查询工具函数
+│   ├── mc_utils.py      # MC 服务器查询工具函数
+│   ├── command_text.py  # 命令文本清洗
+│   ├── permissions.py   # 超级用户鉴权
+│   └── reply_payload.py # Markdown 与键盘回复载荷
 ├── scripts/
 │   └── create_command_panel.py  # 创建指定群的指令面板（一次性执行）
 ├── .env                 # 环境变量（敏感信息，勿提交 Git）
@@ -122,6 +130,7 @@ python scripts/create_command_panel.py
 - [ ] `@Bot /停止 scf` — MCSM 停止实例（超级用户）
 - [ ] `@Bot 指令帮助` — 显示帮助
 - [ ] 非超级用户执行 MCSM 命令被拒绝
+- [ ] `@Bot /抽奖` — 管理员创建抽奖按钮，群成员点击后随机禁言 0–30 分钟
 
 ### 模拟测试（无需 QQ）
 
@@ -145,3 +154,4 @@ if status:
 2. **服务器连通性**：确保机器人所在主机能访问目标 MC 服务器端口
 3. **MCSM 面板**：需要机器人所在主机能访问 `127.0.0.1:23333`（同机部署）
 4. **API 密钥**：`.env` 已在 `.gitignore` 中，切勿将 Secret 提交到 Git
+5. **群管理权限**：抽奖禁言依赖 QQ 群管理接口，机器人需要具备群管理员权限；群主、管理员和机器人账号不能被该接口禁言

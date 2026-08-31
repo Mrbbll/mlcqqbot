@@ -10,9 +10,9 @@ from config import (
     MCSM_API_SECRET,
     DEFAULT_DAEMON_ID,
     get_instance_id,
-    SUPERUSERS,
 )
 from utils.markdown import escape_markdown, inline_code
+from utils.permissions import check_superuser
 
 
 # ==================== MCSM API 调用函数 ====================
@@ -81,13 +81,6 @@ def get_reason(response) -> str:
         return "❌ 面板服务器内部异常"
     else:
         return f"❌ 未知错误 [{status_code}]"
-
-
-# ==================== 权限检查 ====================
-
-def check_superuser(user_id: str) -> bool:
-    """检查用户是否为超级用户。"""
-    return user_id in SUPERUSERS
 
 
 def format_usage(command: str, usage: str) -> str:
