@@ -31,7 +31,7 @@ class MLCBot(Client):
 
     async def on_group_at_message_create(self, message: GroupMessage):
         """处理群聊 @机器人的命令。"""
-        await handle_group_message(message)
+        await handle_group_message(message, api=getattr(self, "api", None))
 
     async def on_c2c_message_create(self, message: C2CMessage):
         """处理私聊命令。"""
@@ -42,12 +42,18 @@ class MLCBot(Client):
         await handle_interaction(self.api, interaction, _log)
 
 
-async def handle_group_message(message: GroupMessage) -> None:
+async def handle_group_message(message: GroupMessage, *, api=None) -> None:
     """提取群消息上下文后交给通用命令处理函数。"""
     user_id = message.author.member_openid if message.author else ""
     group_id = message.group_openid
     _log.info("[群消息] group=%s user=%s content=%s", group_id, user_id, message.content)
-    await handle_command_message(message, user_id, is_group=True, group_id=group_id)
+    await handle_command_message(
+        message,
+        user_id,
+        is_group=True,
+        group_id=group_id,
+        api=api,
+    )
 
 
 async def handle_c2c_message(message: C2CMessage) -> None:
@@ -63,6 +69,7 @@ async def handle_command_message(
     *,
     is_group: bool,
     group_id: str = "",
+    api=None,
 ) -> None:
     """执行文本命令并回复统一格式的载荷。"""
     try:
@@ -70,6 +77,8 @@ async def handle_command_message(
             message.content,
             user_id,
             is_group=is_group,
+            api=api,
+            group_openid=group_id,
         )
         if not reply_text:
             return

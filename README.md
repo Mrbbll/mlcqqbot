@@ -17,6 +17,7 @@
 | `@Bot /停止 <实例>` | MCSM 停止实例（仅管理员） |
 | `@Bot /终止 <实例>` | MCSM 终止实例（仅管理员） |
 | `@Bot /抽奖` | 创建 0–30 分钟随机禁言抽奖按钮（仅管理员） |
+| `@Bot /自助口球` | 随机禁言自己 1–60 分钟（仅群聊） |
 
 ## 项目结构
 
@@ -30,6 +31,8 @@ qqmlcbot/
 │   ├── host_status.py   # status 宿主机监控
 │   ├── mcsm_control.py  # MCSM 面板命令
 │   ├── lottery.py       # 抽奖与群成员禁言
+│   ├── group_mute.py    # QQ 群成员禁言接口
+│   ├── self_muzzle.py   # 自助口球命令
 │   ├── command_router.py # 命令路由
 │   └── interaction.py   # 按钮回调处理
 ├── utils/
@@ -131,6 +134,7 @@ python scripts/create_command_panel.py
 - [ ] `@Bot 指令帮助` — 显示帮助
 - [ ] 非超级用户执行 MCSM 命令被拒绝
 - [ ] `@Bot /抽奖` — 管理员创建抽奖按钮，群成员点击后随机禁言 0–30 分钟
+- [ ] `@Bot /自助口球` — 随机禁言自己 1–60 分钟
 
 ### 模拟测试（无需 QQ）
 

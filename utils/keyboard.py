@@ -9,6 +9,7 @@ HELP_BUTTONS = (
     ("help_ip", "服务器延迟", "/ip"),
     ("help_status", "宿主机状态", "/status"),
     ("help_map", "服务器地图", "/服务器地图"),
+    ("help_self_muzzle", "自助口球", "/自助口球"),
 )
 
 LOTTERY_BUTTON_ID = "lottery_draw"

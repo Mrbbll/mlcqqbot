@@ -1,10 +1,7 @@
 """抽奖命令与 QQ 群成员禁言操作。"""
-from datetime import datetime, timedelta, timezone
 import secrets
-from typing import Any
 
-from botpy.http import Route
-
+from handlers.group_mute import mute_group_member
 from utils.permissions import check_superuser
 
 
@@ -31,39 +28,6 @@ def draw_mute_minutes() -> int:
     """随机抽取包含首尾边界的禁言分钟数。"""
     choices = LOTTERY_MAX_MINUTES - LOTTERY_MIN_MINUTES + 1
     return LOTTERY_MIN_MINUTES + secrets.randbelow(choices)
-
-
-def mute_expire_at(minutes: int) -> str:
-    """把禁言分钟数转换为 QQ OpenAPI 使用的 RFC3339 到期时间。"""
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
-    return expires_at.isoformat(timespec="seconds")
-
-
-async def mute_group_member(
-    api: Any,
-    group_openid: str,
-    member_openid: str,
-    minutes: int,
-) -> Any:
-    """调用 QQ 群管理接口禁言指定的普通群成员。"""
-    member = {
-        "op": "add",
-        "member_openid": member_openid,
-        "mute_expire_at": mute_expire_at(minutes),
-    }
-
-    # 兼容已封装新版群管理接口的 botpy。
-    set_mutes = getattr(api, "set_group_member_mutes", None)
-    if set_mutes is not None:
-        return await set_mutes(group_openid, [member])
-
-    # qq-botpy 1.2.x 尚未封装该接口，复用其鉴权 HTTP 客户端调用。
-    route = Route(
-        "POST",
-        "/v2/groups/{group_openid}/restrict_chat_setting",
-        group_openid=group_openid,
-    )
-    return await api._http.request(route, json={"members": [member]})
 
 
 def lottery_result_text(minutes: int) -> str:

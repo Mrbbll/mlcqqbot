@@ -4,7 +4,8 @@ import traceback
 from typing import Any
 
 from handlers.command_router import route_command
-from handlers.lottery import draw_mute_minutes, lottery_result_text, mute_group_member
+from handlers.group_mute import mute_group_member
+from handlers.lottery import draw_mute_minutes, lottery_result_text
 from utils.keyboard import LOTTERY_ACTION, command_from_interaction
 from utils.markdown import markdown_payload
 from utils.reply_payload import command_reply_payload
@@ -56,7 +57,14 @@ async def handle_interaction(
             await _handle_lottery_interaction(api, interaction, logger)
             return
 
-        reply_text = await route_command(action, user_id)
+        group_openid = getattr(interaction, "group_openid", None) or ""
+        reply_text = await route_command(
+            action,
+            user_id,
+            is_group=bool(group_openid),
+            api=api,
+            group_openid=group_openid,
+        )
         if reply_text:
             await send_interaction_reply(
                 api,

@@ -1,4 +1,6 @@
 """文本命令识别与业务处理器路由。"""
+from typing import Any
+
 from handlers.host_status import handle_status
 from handlers.lottery import handle_lottery
 from handlers.mcsm_control import (
@@ -7,6 +9,7 @@ from handlers.mcsm_control import (
     handle_open,
     handle_stop,
 )
+from handlers.self_muzzle import SELF_MUZZLE_COMMAND, handle_self_muzzle
 from handlers.server_query import (
     handle_help,
     handle_ip,
@@ -21,6 +24,7 @@ COMMAND_PREFIXES = (
     "list", "视奸", "ip", "status", "map", "help",
     "服务器地图", "指令帮助",
     "/执行", "/开启", "/停止", "/终止", "/抽奖", "抽奖",
+    SELF_MUZZLE_COMMAND, SELF_MUZZLE_COMMAND[1:],
 )
 
 
@@ -35,6 +39,8 @@ async def route_command(
     user_id: str,
     *,
     is_group: bool = True,
+    api: Any | None = None,
+    group_openid: str = "",
 ) -> str | None:
     """将标准化后的命令转交给对应业务处理器。"""
     command = normalize_command(content)
@@ -53,6 +59,13 @@ async def route_command(
         return await handle_status()
     if command.startswith("/抽奖"):
         return await handle_lottery(user_id, is_group=is_group)
+    if command.startswith(SELF_MUZZLE_COMMAND):
+        return await handle_self_muzzle(
+            api,
+            group_openid,
+            user_id,
+            is_group=is_group,
+        )
     if command.startswith("/执行"):
         return await handle_execute(command[len("/执行"):].strip(), user_id)
     if command.startswith("/开启"):
