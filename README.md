@@ -38,6 +38,7 @@ qqmlcbot/
 ├── utils/
 │   ├── mc_utils.py      # MC 服务器查询工具函数
 │   ├── command_text.py  # 命令文本清洗
+│   ├── messages.py      # 统一回复文案与 Markdown 格式化
 │   ├── permissions.py   # 超级用户鉴权
 │   └── reply_payload.py # Markdown 与键盘回复载荷
 ├── scripts/

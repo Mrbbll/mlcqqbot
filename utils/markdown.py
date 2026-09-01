@@ -1,9 +1,9 @@
 """QQ 自定义 Markdown 消息工具。
 
 使用方式：
-    from utils.markdown import inline_code, markdown_payload
+    from utils.markdown import inline_code, markdown_payload, mention_user
 
-    content = "# 标题\n\n- **实例**：" + inline_code("scf")
+    content = "**标题**\n\n- **实例**：" + inline_code("scf")
     await message.reply(**markdown_payload(content))
 
 功能说明：
@@ -12,9 +12,11 @@
     - ``escape_markdown``：将动态普通文本中的 Markdown 控制字符转义，
       防止其意外改变消息排版。
     - ``inline_code``：安全地将动态值包裹为行内代码，支持值中包含反引号。
+    - ``mention_user``：生成 QQ Markdown 用户提及，由客户端显示真实群昵称。
 
 本模块仅构造消息内容和参数，不依赖 botpy；群聊与私聊均可复用。
 """
+from html import escape
 from typing import Any
 
 
@@ -46,6 +48,14 @@ def inline_code(value: object) -> str:
 
     delimiter = "`" * (longest_run + 1)
     return f"{delimiter}{text}{delimiter}"
+
+
+def mention_user(user_openid: object) -> str:
+    """生成 QQ Markdown 用户提及，客户端会将其渲染为真实群昵称。"""
+    openid = str(user_openid).strip()
+    if not openid:
+        raise ValueError("生成用户提及时缺少 OpenID")
+    return f'<qqbot-at-user id="{escape(openid, quote=True)}" />'
 
 
 def markdown_payload(content: str) -> dict[str, Any]:

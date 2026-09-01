@@ -27,7 +27,7 @@ def command_reply_payload(
     """构造 Markdown 命令回复，并在需要时附加键盘。"""
     payload = markdown_payload(reply_text)
     if is_help_command(content):
-        payload["keyboard"] = help_keyboard_payload(user_id)
+        payload["keyboard"] = help_keyboard_payload()
     elif is_group and is_lottery_command(content) and check_superuser(user_id):
         payload["keyboard"] = lottery_keyboard_payload()
     return payload

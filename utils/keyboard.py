@@ -19,11 +19,8 @@ _COMMAND_BY_BUTTON_ID = {button_id: command for button_id, _, command in HELP_BU
 _PUBLIC_COMMANDS = frozenset(command for _, _, command in HELP_BUTTONS)
 
 
-def help_keyboard_payload(user_openid: str) -> dict[str, Any]:
-    """构造仅允许指定用户点击的 QQ 内联键盘。"""
-    if not user_openid:
-        raise ValueError("生成帮助键盘时缺少用户 OpenID")
-
+def help_keyboard_payload() -> dict[str, Any]:
+    """构造允许所有群成员点击的 QQ 帮助键盘。"""
     buttons = [
         {
             "id": button_id,

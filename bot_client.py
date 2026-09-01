@@ -8,12 +8,13 @@ from botpy.message import C2CMessage, GroupMessage
 from config import QQ_BOT_APPID
 from handlers.command_router import route_command
 from handlers.interaction import handle_interaction
+from utils import messages
 from utils.markdown import markdown_payload
 from utils.reply_payload import command_reply_payload
 
 
 _log = logging.getLogger("mlcbot")
-_ERROR_REPLY = markdown_payload("⚠️ **处理请求时发生错误**\n\n请稍后再试")
+_ERROR_REPLY = markdown_payload(messages.PROCESSING_ERROR)
 
 
 class MLCBot(Client):

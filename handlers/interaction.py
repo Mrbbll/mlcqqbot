@@ -5,7 +5,8 @@ from typing import Any
 
 from handlers.command_router import route_command
 from handlers.group_mute import mute_group_member
-from handlers.lottery import draw_mute_minutes, lottery_result_text
+from handlers.lottery import draw_mute_minutes
+from utils import messages
 from utils.keyboard import LOTTERY_ACTION, command_from_interaction
 from utils.markdown import markdown_payload
 from utils.reply_payload import command_reply_payload
@@ -77,7 +78,7 @@ async def handle_interaction(
         await send_interaction_reply(
             api,
             interaction,
-            markdown_payload("⚠️ **处理请求时发生错误**\n\n请稍后再试"),
+            markdown_payload(messages.PROCESSING_ERROR),
             logger,
         )
 
@@ -94,7 +95,7 @@ async def _handle_lottery_interaction(
         await send_interaction_reply(
             api,
             interaction,
-            markdown_payload("⚠️ **抽奖按钮只能在群聊中使用**"),
+            markdown_payload(messages.LOTTERY_BUTTON_GROUP_ONLY),
             logger,
         )
         return
@@ -108,10 +109,7 @@ async def _handle_lottery_interaction(
             await send_interaction_reply(
                 api,
                 interaction,
-                markdown_payload(
-                    "❌ **抽奖禁言失败**\n\n"
-                    "请确认机器人拥有群管理员权限，且点击者是普通群成员"
-                ),
+                markdown_payload(messages.LOTTERY_MUTE_FAILED),
                 logger,
             )
             return
@@ -125,6 +123,6 @@ async def _handle_lottery_interaction(
     await send_interaction_reply(
         api,
         interaction,
-        markdown_payload(lottery_result_text(minutes)),
+        markdown_payload(messages.lottery_result(minutes, member_openid)),
         logger,
     )

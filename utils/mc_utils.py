@@ -8,6 +8,8 @@ from io import BytesIO
 
 from mcstatus import JavaServer
 
+from utils.messages import PLAYER_EMPTY, PLAYER_UNKNOWN
+
 
 # ==================== 服务器配置 ====================
 # 格式: [主服务器地址, 节点服务器地址]
@@ -83,25 +85,25 @@ def get_icon_base64(status):
 def get_players(status):
     """从 status 中提取玩家名列表（通过 sample）"""
     if not status:
-        return "匿名/无人"
+        return PLAYER_UNKNOWN
     try:
         if status.players.sample:
             return ", ".join(p.name for p in status.players.sample)
-        return "无人"
+        return PLAYER_EMPTY
     except Exception:
-        return "匿名/无人"
+        return PLAYER_UNKNOWN
 
 
 def get_players_vc(query):
     """从 query 中提取完整玩家名列表"""
     if not query:
-        return "匿名/无人"
+        return PLAYER_UNKNOWN
     try:
         if query.players.names:
             return ", ".join(query.players.names)
-        return "无人"
+        return PLAYER_EMPTY
     except Exception:
-        return "匿名/无人"
+        return PLAYER_UNKNOWN
 
 
 # ==================== 服务器组列表 ====================
