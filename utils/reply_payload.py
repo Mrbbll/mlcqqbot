@@ -2,7 +2,11 @@
 from typing import Any
 
 from utils.command_text import normalize_command
-from utils.keyboard import help_keyboard_payload, lottery_keyboard_payload
+from utils.keyboard import (
+    help_keyboard_payload,
+    lottery_keyboard_payload,
+    poll_category_keyboard_payload,
+)
 from utils.markdown import markdown_payload
 from utils.permissions import check_superuser
 
@@ -15,6 +19,11 @@ def is_help_command(content: str) -> bool:
 def is_lottery_command(content: str) -> bool:
     """判断消息是否为抽奖命令。"""
     return normalize_command(content).startswith("/抽奖")
+
+
+def is_poll_command(content: str) -> bool:
+    """判断消息是否为投票发起命令，而不是投票结果命令。"""
+    return normalize_command(content).split(maxsplit=1)[0] == "/投票"
 
 
 def command_reply_payload(
@@ -30,4 +39,6 @@ def command_reply_payload(
         payload["keyboard"] = help_keyboard_payload()
     elif is_group and is_lottery_command(content) and check_superuser(user_id):
         payload["keyboard"] = lottery_keyboard_payload()
+    elif is_group and is_poll_command(content) and check_superuser(user_id):
+        payload["keyboard"] = poll_category_keyboard_payload()
     return payload

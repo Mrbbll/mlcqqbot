@@ -9,6 +9,12 @@ from handlers.mcsm_control import (
     handle_open,
     handle_stop,
 )
+from handlers.poll import (
+    POLL_COMMAND,
+    POLL_RESULTS_COMMAND,
+    handle_poll,
+    handle_poll_results,
+)
 from handlers.self_muzzle import SELF_MUZZLE_COMMAND, handle_self_muzzle
 from handlers.server_query import (
     handle_help,
@@ -24,7 +30,8 @@ COMMAND_PREFIXES = (
     "list", "视奸", "ip", "status", "map", "help",
     "服务器地图", "指令帮助",
     "/执行", "/开启", "/停止", "/终止", "/抽奖", "抽奖",
-    SELF_MUZZLE_COMMAND, SELF_MUZZLE_COMMAND[1:],
+    POLL_RESULTS_COMMAND, POLL_COMMAND,
+    SELF_MUZZLE_COMMAND,
 )
 
 
@@ -59,6 +66,14 @@ async def route_command(
         return await handle_status()
     if command.startswith("/抽奖"):
         return await handle_lottery(user_id, is_group=is_group)
+    if command.startswith(POLL_RESULTS_COMMAND):
+        return await handle_poll_results(
+            user_id,
+            group_openid,
+            is_group=is_group,
+        )
+    if command.startswith(POLL_COMMAND):
+        return await handle_poll(user_id, is_group=is_group)
     if command.startswith(SELF_MUZZLE_COMMAND):
         return await handle_self_muzzle(
             api,

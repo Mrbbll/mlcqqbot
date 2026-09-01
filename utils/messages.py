@@ -4,8 +4,12 @@
 再调用本模块生成最终回复，避免文案散落在各个 handler 中。
 """
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from utils.markdown import escape_markdown, inline_code, mention_user
+
+if TYPE_CHECKING:
+    from utils.poll_store import PollResult
 
 
 # ==================== 通用回复 ====================
@@ -29,7 +33,13 @@ HELP = """**📋 指令帮助**
 - `/执行 <实例名> <命令>`
 - `/开启 <实例名>`
 - `/停止 <实例名>`
-- `/终止 <实例名>`"""
+- `/终止 <实例名>`
+
+**管理员互动**
+
+- `/抽奖` — 发起随机禁言抽奖
+- `/投票` — 从腾讯表格发起整合包投票
+- `/投票结果` — 查看本群当前投票结果"""
 
 SERVER_MAP = """**服务器地图**
 
@@ -272,6 +282,94 @@ def lottery_result(minutes: int, member_openid: str = "") -> str:
         "**🎲 抽奖结果**\n\n"
         f"{member} 抽中 **{minutes} 分钟**禁言，奖励已发放。"
     )
+
+
+# ==================== 群聊投票 ====================
+
+POLL_PERMISSION_DENIED = "⛔ **权限不足**\n\n仅管理员可发起或查看投票结果"
+POLL_GROUP_ONLY = "⚠️ **投票只能在群聊中发起或参与**"
+POLL_RESULTS_GROUP_ONLY = "⚠️ **投票结果只能在群聊中查看**"
+POLL_NOT_ACTIVE = "ℹ️ **当前没有进行中的投票**"
+POLL_SHEET_FAILED = (
+    "❌ **候选项读取失败**\n\n"
+    "请确认腾讯表格仍允许通过分享链接查看，并稍后重试"
+)
+POLL_VOTE_UNAVAILABLE = (
+    "⚠️ **无法记录选票**\n\n"
+    "这轮投票可能已经被新投票替代，请点击最新的投票消息"
+)
+POLL_SUBMIT_UNAVAILABLE = (
+    "⚠️ **无法提交投票**\n\n"
+    "没有待提交的选择，或这轮投票已经结束。"
+)
+POLL_CATEGORY_PROMPT = (
+    "**📊 发起群聊投票**\n\n"
+    "请选择候选项来源：**科技**、**冒险**或**混合**。\n\n"
+    "> 选择后会实时读取腾讯在线表格；新投票会结束本群上一轮投票"
+)
+_POLL_CATEGORY_LABELS = {
+    "technology": "科技",
+    "adventure": "冒险",
+    "mixed": "混合",
+}
+
+
+def poll_candidate_limit(actual: int, maximum: int) -> str:
+    """候选项超过单条 QQ 键盘容量时的提示。"""
+    return (
+        "⚠️ **候选项过多，无法发起投票**\n\n"
+        f"当前读取到 **{actual} 项**，一条消息最多支持 **{maximum} 项**。\n\n"
+        "> 请先整理腾讯表格"
+    )
+
+
+def poll_started(category: str, candidates: Sequence[str]) -> str:
+    """生成编号候选项列表，按钮使用相同编号避免长名称截断。"""
+    label = _POLL_CATEGORY_LABELS.get(category, category)
+    lines = [
+        "**📊 群聊投票**",
+        "",
+        f"- **类型**：{escape_markdown(label)}",
+        f"- **候选项**：{len(candidates)} 个",
+        "- **规则**：点击候选项进行选择，再点击最后的提交按钮，最后提交的投票会覆盖之前投票",
+        "",
+    ]
+    lines.extend(
+        f"{index}. {escape_markdown(name)}"
+        for index, name in enumerate(candidates, start=1)
+    )
+    lines.extend(("", "> 点击下方对应编号完成投票"))
+    return "\n".join(lines)
+
+
+def poll_submitted(member_openid: str, candidate_names: Sequence[str]) -> str:
+    """生成投票提交成功提示。"""
+    member = mention_user(member_openid)
+    if not candidate_names:
+        return f"**✅ 投票已更新**\n\n{member} 已清空本轮选择。"
+    lines = "\n".join(f"- {escape_markdown(name)}" for name in candidate_names)
+    return f"**✅ 投票已提交**\n\n{member} 提交了：\n{lines}"
+
+
+def poll_results(result: "PollResult") -> str:
+    """生成当前投票的计票汇总。"""
+    label = _POLL_CATEGORY_LABELS.get(result.category, result.category)
+    lines = [
+        "**📈 投票结果**",
+        "",
+        f"- **类型**：{escape_markdown(label)}",
+        f"- **总选择数**：{result.total_votes}",
+        "",
+    ]
+    for candidate_id, name, count in result.candidates:
+        percentage = (
+            count / result.total_votes * 100 if result.total_votes else 0.0
+        )
+        lines.append(
+            f"{candidate_id}. {escape_markdown(name)} — "
+            f"**{count} 票**"
+        )
+    return "\n".join(lines)
 
 
 # ==================== 自助口球 ====================

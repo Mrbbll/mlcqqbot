@@ -3,6 +3,7 @@
 从 NoneBot 项目移植的 MCSM 面板和服务器配置
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,6 +23,18 @@ SUPERUSERS = get_env_list("SUPERUSERS")
 
 # ==================== QQ 群聊指令面板 ====================
 QQ_GROUP_OPENIDS = get_env_list("QQ_GROUP_OPENIDS")
+
+# ==================== 群聊投票 ====================
+PROJECT_ROOT = Path(__file__).resolve().parent
+TENCENT_SHEET_URL = os.getenv(
+    "TENCENT_SHEET_URL",
+    "https://docs.qq.com/sheet/DUU5xSWRCR2VZdkhO?tab=BB08J2",
+)
+TENCENT_ADVENTURE_TAB = os.getenv("TENCENT_ADVENTURE_TAB", "BB08J2")
+TENCENT_TECHNOLOGY_TAB = os.getenv("TENCENT_TECHNOLOGY_TAB", "g9hsny")
+POLL_DB_PATH = Path(
+    os.getenv("POLL_DB_PATH", str(PROJECT_ROOT / "data" / "polls.sqlite3"))
+)
 
 # ==================== MCSM 面板配置 ====================
 MCSM_PANEL_URL = "http://127.0.0.1:23333"

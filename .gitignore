@@ -11,5 +11,6 @@ mlcbot.log*
 .vscode
 *.bin
 *.html
+data/*.sqlite3*
 tests
 .claude
