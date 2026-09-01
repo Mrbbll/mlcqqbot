@@ -57,8 +57,8 @@ qqmlcbot/
 ### 2. 安装依赖
 
 ```bash
-cd D:\desktop\nonebot\qqmlcbot
-pip install -r requirements.txt
+conda env create -f environment.yml
+conda run -n mlcqqbot python main.py
 ```
 
 ### 3. 配置
