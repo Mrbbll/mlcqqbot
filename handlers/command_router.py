@@ -1,6 +1,7 @@
 """文本命令识别与业务处理器路由。"""
 from typing import Any
 
+from handlers.fishing import handle_start_fishing
 from handlers.host_status import handle_status
 from handlers.lottery import handle_lottery
 from handlers.mcsm_control import (
@@ -30,6 +31,7 @@ COMMAND_PREFIXES = (
     "list", "视奸", "ip", "status", "map", "help",
     "服务器地图", "指令帮助",
     "/执行", "/开启", "/停止", "/终止", "/抽奖", "抽奖",
+    "/开始钓鱼", "开始钓鱼",
     POLL_RESULTS_COMMAND, POLL_COMMAND,
     SELF_MUZZLE_COMMAND,
 )
@@ -66,6 +68,13 @@ async def route_command(
         return await handle_status()
     if command.startswith("/抽奖"):
         return await handle_lottery(user_id, is_group=is_group)
+    if command.startswith("/开始钓鱼"):
+        return await handle_start_fishing(
+            api,
+            group_openid,
+            user_id,
+            is_group=is_group,
+        )
     if command.startswith(POLL_RESULTS_COMMAND):
         return await handle_poll_results(
             user_id,

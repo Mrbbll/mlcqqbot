@@ -16,6 +16,9 @@ HELP_BUTTONS = (
 
 LOTTERY_BUTTON_ID = "lottery_draw"
 LOTTERY_ACTION = "lottery:draw"
+FISHING_ACTION_PREFIX = "fishing:hook:"
+_FISHING_ACTION_PATTERN = re.compile(r"fishing:hook:([A-Za-z0-9_-]+)")
+_FISHING_BUTTON_PATTERN = re.compile(r"fishing_hook_([A-Za-z0-9_-]+)")
 POLL_MAX_CANDIDATES = 20
 POLL_BUTTONS_PER_ROW = 5
 POLL_CATEGORY_ACTIONS = {
@@ -101,6 +104,42 @@ def lottery_keyboard_payload() -> dict[str, Any]:
             ]
         }
     }
+
+
+def fishing_keyboard_payload(token: str, user_openid: str) -> dict[str, Any]:
+    """构造仅钓鱼发起者可操作的拉钩回调按钮。"""
+    return {
+        "content": {
+            "rows": [
+                {
+                    "buttons": [
+                        {
+                            "id": f"fishing_hook_{token}",
+                            "render_data": {
+                                "label": "🎣 拉钩",
+                                "visited_label": "🎣 已拉钩",
+                                "style": 1,
+                            },
+                            "action": {
+                                "type": 1,
+                                "permission": {
+                                    "type": 0,
+                                    "specify_user_ids": [user_openid],
+                                },
+                                "data": f"{FISHING_ACTION_PREFIX}{token}",
+                            },
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+
+def fishing_token_from_action(action: str) -> str | None:
+    """从已校验的拉钩动作中提取会话令牌。"""
+    match = _FISHING_ACTION_PATTERN.fullmatch(action)
+    return match.group(1) if match else None
 
 
 def poll_category_keyboard_payload() -> dict[str, Any]:
@@ -243,6 +282,13 @@ def command_from_interaction(interaction: Any) -> str | None:
     button_data = getattr(resolved, "button_data", None)
     if button_data == LOTTERY_ACTION:
         return LOTTERY_ACTION
+
+    if isinstance(button_id, str):
+        fishing_match = _FISHING_BUTTON_PATTERN.fullmatch(button_id)
+        if fishing_match:
+            return f"{FISHING_ACTION_PREFIX}{fishing_match.group(1)}"
+    if isinstance(button_data, str) and fishing_token_from_action(button_data):
+        return button_data
 
     poll_action = _internal_poll_action(button_id, button_data)
     if poll_action:

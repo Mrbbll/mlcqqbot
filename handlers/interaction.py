@@ -5,6 +5,7 @@ import traceback
 from typing import Any
 
 from handlers.command_router import route_command
+from handlers.fishing import claim_fish
 from handlers.group_mute import mute_group_member
 from handlers.lottery import draw_mute_minutes
 from utils import messages
@@ -12,6 +13,7 @@ from utils.keyboard import (
     LOTTERY_ACTION,
     POLL_MAX_CANDIDATES,
     command_from_interaction,
+    fishing_token_from_action,
     poll_category_from_action,
     poll_submit_from_action,
     poll_vote_from_action,
@@ -74,6 +76,16 @@ async def handle_interaction(
     try:
         if action == LOTTERY_ACTION:
             await _handle_lottery_interaction(api, interaction, logger)
+            return
+
+        fishing_token = fishing_token_from_action(action)
+        if fishing_token is not None:
+            await _handle_fishing_interaction(
+                api,
+                interaction,
+                fishing_token,
+                logger,
+            )
             return
 
         poll_category = poll_category_from_action(action)
@@ -172,6 +184,50 @@ async def _handle_lottery_interaction(
         api,
         interaction,
         markdown_payload(messages.lottery_result(minutes, member_openid)),
+        logger,
+    )
+
+
+async def _handle_fishing_interaction(
+    api: Any,
+    interaction: Any,
+    token: str,
+    logger: logging.Logger,
+) -> None:
+    """校验拉钩按钮的点击者和时限，并发送随机渔获。"""
+    group_openid = getattr(interaction, "group_openid", None) or ""
+    member_openid = getattr(interaction, "group_member_openid", None) or ""
+    if not group_openid or not member_openid:
+        await send_interaction_reply(
+            api,
+            interaction,
+            markdown_payload(messages.FISHING_GROUP_ONLY),
+            logger,
+        )
+        return
+
+    result, fish = claim_fish(token, group_openid, member_openid)
+    if result == "not_owner":
+        reply = messages.FISHING_NOT_OWNER
+    elif result == "expired" or fish is None:
+        reply = messages.FISHING_EXPIRED
+    else:
+        reply = messages.fishing_result(
+            member_openid,
+            fish.species,
+            fish.size_cm,
+        )
+        logger.info(
+            "[钓鱼成功] group=%s user=%s species=%s size_cm=%.1f",
+            group_openid,
+            member_openid,
+            fish.species,
+            fish.size_cm,
+        )
+    await send_interaction_reply(
+        api,
+        interaction,
+        markdown_payload(reply),
         logger,
     )
 

@@ -27,6 +27,7 @@ HELP = """**📋 指令帮助**
 - `/status` — 宿主机运行状态
 - `/服务器地图` — 地图和文档链接
 - `/自助口球` — 随机禁言自己 1–60 分钟（仅群聊）
+- `/开始钓鱼` — 开始钓鱼小游戏（仅群聊）
 
 **实例管理**
 
@@ -281,6 +282,31 @@ def lottery_result(minutes: int, member_openid: str = "") -> str:
     return (
         "**🎲 抽奖结果**\n\n"
         f"{member} 抽中 **{minutes} 分钟**禁言，奖励已发放。"
+    )
+
+
+# ==================== 钓鱼小游戏 ====================
+
+FISHING_STARTED = "开始钓鱼，请注意鱼上钩时需要在2秒内按下按钮"
+FISHING_GROUP_ONLY = "⚠️ **钓鱼小游戏只能在群聊中使用**"
+FISHING_CONTEXT_MISSING = "❌ **无法开始钓鱼**\n\n缺少群聊或成员信息"
+FISHING_ALREADY_ACTIVE = "🎣 **你已经在钓鱼了**\n\n请耐心等待鱼上钩"
+FISHING_NOT_OWNER = "⚠️ **这不是你的鱼竿**"
+FISHING_EXPIRED = "💨 **鱼儿跑掉了**\n\n请重新输入 `/开始钓鱼`"
+
+
+def fishing_bite(member_openid: str) -> str:
+    """生成鱼上钩时提醒指定群成员的 Markdown 文案。"""
+    return f"{mention_user(member_openid)}\n\n**鱼上钩啦！**"
+
+
+def fishing_result(member_openid: str, species: str, size_cm: float) -> str:
+    """生成包含鱼种与大小的成功拉钩结果。"""
+    return (
+        "**🎣 钓鱼成功**\n\n"
+        f"{mention_user(member_openid)} 钓到了一条鱼！\n\n"
+        f"- **种类**：{escape_markdown(species)}\n"
+        f"- **大小**：{size_cm:.1f} cm"
     )
 
 

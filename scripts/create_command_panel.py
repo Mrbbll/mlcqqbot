@@ -24,6 +24,7 @@ COMMAND_PANEL_ITEMS = [
     {"type": "command", "name": "执行", "desc":"执行命令到实例"},
     {"type": "command", "name": "投票", "desc": "管理员发起整合包投票"},
     {"type": "command", "name": "投票结果", "desc": "管理员查看当前投票结果"},
+    {"type": "command", "name": "开始钓鱼", "desc": "开始钓鱼小游戏"},
 ]
 
 
