@@ -88,9 +88,11 @@ POLL_DB_PATH=D:\desktop\bot\mlcqqbot\data\polls.sqlite3
 AGENT_API_URL=https://api.example.com/v1/chat/completions
 AGENT_API_KEY=你的云端API密钥
 AGENT_MODEL=你的模型名称
+# 可选：非敏感的服务器实例、目录和启动方式说明；内容会随 /agent 请求发送给云端 API
+AGENT_SERVER_CONTEXT=例如：生存服目录=/srv/minecraft/survival；由 systemd 服务 minecraft-survival 启动
 ```
 
-`/agent <问题>` 仅供 `SUPERUSERS` 使用。Agent 只提供文本文件读取工具，不会修改文件或执行系统命令；每次最多读取 64 KiB，文件内容会发送到配置的云端模型。
+`/agent <问题>` 仅供 `SUPERUSERS` 使用。Agent 会收到项目根目录、代码模块职责、MCSM 地址和投票数据库路径等非敏感结构摘要；部署相关的实例名、目录和启动方式可通过 `AGENT_SERVER_CONTEXT` 补充。不要在该变量中填写密钥、令牌或其他认证信息，内容会发送到配置的云端模型。Agent 可读取文本文件、按行读取、列出目录、按文件名或内容搜索，并在服务器默认 shell 中执行任意命令。命令使用 bot 进程权限且不设命令白名单；单次最多运行 60 秒，返回输出最多 12,000 个字符。每轮最多调用五个工具，单个文件最多读取 64 KiB；文本搜索最多读取 2 MiB，并限制目录扫描量。工具定义会随每次请求发送，普通闲聊不会自动调用工具。API 服务需支持 Chat Completions 工具调用。
 
 ### 4. 启动
 

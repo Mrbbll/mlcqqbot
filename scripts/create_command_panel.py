@@ -21,7 +21,7 @@ COMMAND_PANEL_ITEMS = [
     {"type": "command", "name": "status", "desc": "查看宿主机运行状态"},
     {"type": "command", "name": "map", "desc": "查看地图和文档链接"},
     {"type": "command", "name": "help", "desc": "查看全部可用指令"},
-    {"type": "command", "name": "agent", "desc": "云端 AI 助手（仅超级用户）"},
+    {"type": "command", "name": "agent", "desc": "云端 AI 助手（仅管理员）"},
     {"type": "command", "name": "执行", "desc":"执行命令到实例"},
     {"type": "command", "name": "投票", "desc": "管理员发起整合包投票"},
     {"type": "command", "name": "投票结果", "desc": "管理员查看当前投票结果"},

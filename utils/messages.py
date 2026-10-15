@@ -60,7 +60,7 @@ AGENT_NOT_CONFIGURED = (
 )
 AGENT_API_ERROR = "⚠️ **AI 服务暂时不可用**\n\n请检查 API 配置或稍后再试。"
 AGENT_EMPTY_REPLY = "⚠️ AI 服务没有返回可显示的文本。"
-AGENT_TOOL_LIMIT = "⚠️ 本轮文件读取次数过多，请缩小问题范围后重试。"
+AGENT_TOOL_LIMIT = "⚠️ 本轮服务器工具尝试已达上限，请缩小问题范围后重试。"
 
 
 def server_unknown(server_name: str) -> str:
