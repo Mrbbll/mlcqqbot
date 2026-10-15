@@ -84,7 +84,13 @@ TENCENT_ADVENTURE_TAB=BB08J2
 TENCENT_TECHNOLOGY_TAB=g9hsny
 # 可选；默认保存在项目 data 目录中
 POLL_DB_PATH=D:\desktop\bot\mlcqqbot\data\polls.sqlite3
+# 云端 AI 助手；API 需兼容 OpenAI Chat Completions 工具调用格式
+AGENT_API_URL=https://api.example.com/v1/chat/completions
+AGENT_API_KEY=你的云端API密钥
+AGENT_MODEL=你的模型名称
 ```
+
+`/agent <问题>` 仅供 `SUPERUSERS` 使用。Agent 只提供文本文件读取工具，不会修改文件或执行系统命令；每次最多读取 64 KiB，文件内容会发送到配置的云端模型。
 
 ### 4. 启动
 

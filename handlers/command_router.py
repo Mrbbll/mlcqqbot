@@ -1,6 +1,7 @@
 """文本命令识别与业务处理器路由。"""
 from typing import Any
 
+from handlers.agent import handle_agent
 from handlers.fishing import handle_start_fishing
 from handlers.host_status import handle_status
 from handlers.lottery import handle_lottery
@@ -30,6 +31,7 @@ from utils.command_text import clean_message, normalize_command
 COMMAND_PREFIXES = (
     "list", "视奸", "ip", "status", "map", "help",
     "服务器地图", "指令帮助",
+    "agent", "/agent",
     "/执行", "/开启", "/停止", "/终止", "/抽奖", "抽奖",
     "/开始钓鱼", "开始钓鱼",
     POLL_RESULTS_COMMAND, POLL_COMMAND,
@@ -54,6 +56,8 @@ async def route_command(
     """将标准化后的命令转交给对应业务处理器。"""
     command = normalize_command(content)
 
+    if command == "/agent" or command.startswith("/agent "):
+        return await handle_agent(command[len("/agent"):].strip(), user_id)
     if command.startswith(("/指令帮助", "/help")):
         return await handle_help()
     if command.startswith(("/服务器地图", "/map")):

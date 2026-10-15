@@ -26,6 +26,7 @@ HELP = """**📋 指令帮助**
 - `/ip` — 服务器延迟一览
 - `/status` — 宿主机运行状态
 - `/服务器地图` — 地图和文档链接
+- `/agent <问题>` — 云端 AI 助手（仅超级用户，可读取指定文本文件）
 - `/自助口球` — 随机禁言自己 1–60 分钟（仅群聊）
 - `/开始钓鱼` — 开始钓鱼小游戏（仅群聊）
 
@@ -50,6 +51,16 @@ SERVER_MAP = """**服务器地图**
 PLAYER_UNKNOWN = "匿名/无人"
 PLAYER_EMPTY = "无人"
 SERVER_TIMEOUT = "超时"
+
+AGENT_PERMISSION_DENIED = "⚠️ **无权限**\n\n`/agent` 仅限超级用户使用。"
+AGENT_USAGE = "**用法**：`/agent <问题>`\n\n总结文件时，请在问题中提供服务器上的绝对路径。"
+AGENT_NOT_CONFIGURED = (
+    "⚠️ **AI 助手尚未配置**\n\n"
+    "请设置 `AGENT_API_URL`、`AGENT_API_KEY` 和 `AGENT_MODEL`。"
+)
+AGENT_API_ERROR = "⚠️ **AI 服务暂时不可用**\n\n请检查 API 配置或稍后再试。"
+AGENT_EMPTY_REPLY = "⚠️ AI 服务没有返回可显示的文本。"
+AGENT_TOOL_LIMIT = "⚠️ 本轮文件读取次数过多，请缩小问题范围后重试。"
 
 
 def server_unknown(server_name: str) -> str:

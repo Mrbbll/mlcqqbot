@@ -21,6 +21,11 @@ def get_env_list(name: str) -> list[str]:
 # ==================== 超级用户 ====================
 SUPERUSERS = get_env_list("SUPERUSERS")
 
+# ==================== 云端 AI 助手 ====================
+AGENT_API_URL = os.getenv("AGENT_API_URL", "").strip()
+AGENT_API_KEY = os.getenv("AGENT_API_KEY", "").strip()
+AGENT_MODEL = os.getenv("AGENT_MODEL", "").strip()
+
 # ==================== QQ 群聊指令面板 ====================
 QQ_GROUP_OPENIDS = get_env_list("QQ_GROUP_OPENIDS")
 
