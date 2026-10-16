@@ -26,6 +26,12 @@ AGENT_API_URL = os.getenv("AGENT_API_URL", "").strip()
 AGENT_API_KEY = os.getenv("AGENT_API_KEY", "").strip()
 AGENT_MODEL = os.getenv("AGENT_MODEL", "").strip()
 AGENT_SERVER_CONTEXT = os.getenv("AGENT_SERVER_CONTEXT", "").strip()[:4000]
+AGENT_LOG_MODEL_RESPONSE = os.getenv("AGENT_LOG_MODEL_RESPONSE", "").strip().casefold() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 # ==================== QQ 群聊指令面板 ====================
 QQ_GROUP_OPENIDS = get_env_list("QQ_GROUP_OPENIDS")

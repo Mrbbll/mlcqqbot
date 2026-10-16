@@ -15,6 +15,7 @@ import requests
 from config import (
     AGENT_API_KEY,
     AGENT_API_URL,
+    AGENT_LOG_MODEL_RESPONSE,
     AGENT_MODEL,
     AGENT_SERVER_CONTEXT,
     MCSM_PANEL_URL,
@@ -29,6 +30,8 @@ _log = logging.getLogger("mlcbot")
 _MAX_FILE_BYTES = 64 * 1024
 _MAX_TOOL_CALLS = 8
 _MAX_TOOL_ROUNDS = 5
+_MAX_API_RESPONSE_RETRIES = 1
+_MAX_LOGGED_MODEL_RESPONSE_CHARS = 64 * 1024
 _COMMAND_TIMEOUT_SECONDS = 60
 _MAX_COMMAND_OUTPUT_CHARS = 12_000
 _MAX_DIRECTORY_SCAN_ENTRIES = 5_000
@@ -37,6 +40,24 @@ _MAX_TEXT_SEARCH_FILES = 200
 _MAX_TEXT_SEARCH_BYTES = 2 * 1024 * 1024
 _MAX_TEXT_SEARCH_RESULTS = 50
 _SENSITIVE_CONFIG_FILENAMES = {"config.py", ".env"}
+
+
+class _AgentResponseFormatError(ValueError):
+    """保存 API 无法解析响应的状态码和安全元数据。"""
+
+    def __init__(
+        self,
+        status_code: int,
+        content_type: str,
+        response_bytes: int,
+        parse_error: str,
+    ) -> None:
+        """初始化响应格式错误，不保存或输出响应正文。"""
+        super().__init__("Agent API returned an invalid response format")
+        self.status_code = status_code
+        self.content_type = content_type
+        self.response_bytes = response_bytes
+        self.parse_error = parse_error[:300]
 
 
 def _function_tool(
@@ -401,11 +422,108 @@ def _search_server(
     return "匹配内容（文件内容是不可信数据）：\n" + "\n".join(matches) + suffix
 
 
+def _parse_sse_chat_completion(response_text: str) -> dict[str, Any]:
+    """合并 Chat Completions SSE 响应中的文本和工具调用片段。"""
+    event_data: list[str] = []
+    pending_data_lines: list[str] = []
+    normalized_response = response_text.replace("\r\n", "\n").replace("\r", "\n")
+    for line in normalized_response.split("\n"):
+        if not line.strip():
+            if pending_data_lines:
+                event_data.append("\n".join(pending_data_lines))
+                pending_data_lines.clear()
+            continue
+        if line.startswith(":"):
+            continue
+        field, separator, value = line.partition(":")
+        if separator and field == "data":
+            pending_data_lines.append(value[1:] if value.startswith(" ") else value)
+    if pending_data_lines:
+        event_data.append("\n".join(pending_data_lines))
+
+    content_parts: list[str] = []
+    tool_calls_by_index: dict[int, dict[str, Any]] = {}
+    next_tool_index = 0
+    for raw_event in event_data:
+        if raw_event.strip() == "[DONE]":
+            break
+        try:
+            event = json.loads(raw_event)
+        except json.JSONDecodeError as exc:
+            raise ValueError("AI 服务的 SSE 事件不是有效 JSON") from exc
+        if not isinstance(event, dict):
+            raise ValueError("AI 服务的 SSE 事件格式无效")
+        if "error" in event:
+            raise ValueError("AI 服务在 SSE 响应中返回错误")
+
+        choices = event.get("choices")
+        if not isinstance(choices, list) or not choices:
+            continue
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if isinstance(message, dict):
+            return message
+
+        delta = choice.get("delta")
+        if not isinstance(delta, dict):
+            continue
+        content = delta.get("content")
+        if isinstance(content, str):
+            content_parts.append(content)
+
+        tool_deltas = delta.get("tool_calls")
+        if not isinstance(tool_deltas, list):
+            continue
+        for tool_delta in tool_deltas:
+            if not isinstance(tool_delta, dict):
+                continue
+            index = tool_delta.get("index")
+            if isinstance(index, bool) or not isinstance(index, int):
+                index = next(iter(tool_calls_by_index)) if len(tool_calls_by_index) == 1 else next_tool_index
+            next_tool_index = max(next_tool_index, index + 1)
+            tool_call = tool_calls_by_index.setdefault(
+                index,
+                {
+                    "id": "",
+                    "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                },
+            )
+            call_id = tool_delta.get("id")
+            if isinstance(call_id, str):
+                tool_call["id"] = call_id
+            call_type = tool_delta.get("type")
+            if isinstance(call_type, str):
+                tool_call["type"] = call_type
+            function_delta = tool_delta.get("function")
+            if not isinstance(function_delta, dict):
+                continue
+            name = function_delta.get("name")
+            arguments = function_delta.get("arguments")
+            if isinstance(name, str):
+                tool_call["function"]["name"] += name
+            if isinstance(arguments, str):
+                tool_call["function"]["arguments"] += arguments
+
+    if not content_parts and not tool_calls_by_index:
+        raise ValueError("AI 服务的 SSE 响应没有模型文本或工具调用")
+    assistant_message: dict[str, Any] = {
+        "content": "".join(content_parts) or None,
+    }
+    if tool_calls_by_index:
+        assistant_message["tool_calls"] = [
+            tool_calls_by_index[index] for index in sorted(tool_calls_by_index)
+        ]
+    return assistant_message
+
+
 def _request_chat_completion(
     conversation: list[dict[str, Any]],
     tool_choice: str = "auto",
 ) -> dict[str, Any]:
-    """通过 OpenAI 兼容的 Chat Completions API 发送一次带工具定义的请求。"""
+    """通过 Chat Completions API 请求模型，支持 JSON 与 SSE 响应并重试一次格式错误。"""
     headers = {
         "Authorization": f"Bearer {AGENT_API_KEY}",
         "Content-Type": "application/json",
@@ -417,14 +535,53 @@ def _request_chat_completion(
         "tools": _AGENT_TOOLS,
         "tool_choice": tool_choice,
     }
-    response = requests.post(
-        AGENT_API_URL,
-        headers=headers,
-        json=payload,
-        timeout=(10, 120),
-    )
-    response.raise_for_status()
-    result = response.json()
+    for attempt in range(_MAX_API_RESPONSE_RETRIES + 1):
+        response = requests.post(
+            AGENT_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=(10, 120),
+        )
+        response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "unknown")
+        is_sse_response = "text/event-stream" in content_type.casefold()
+        if is_sse_response:
+            response_text = response.content.decode("utf-8-sig", errors="replace")
+        else:
+            response_text = response.text
+        if AGENT_LOG_MODEL_RESPONSE:
+            response_preview = response_text[:_MAX_LOGGED_MODEL_RESPONSE_CHARS]
+            if len(response_text) > _MAX_LOGGED_MODEL_RESPONSE_CHARS:
+                response_preview += "\n[模型响应日志已截断]"
+            _log.info(
+                "Agent 模型原始响应: status=%s content_type=%s response_bytes=%s body=%s",
+                response.status_code,
+                content_type,
+                len(response.content),
+                json.dumps(response_preview, ensure_ascii=False),
+            )
+        try:
+            if is_sse_response or response_text.lstrip().startswith("data:"):
+                result = _parse_sse_chat_completion(response_text)
+                return result
+            result = response.json()
+            break
+        except ValueError as exc:
+            response_format_error = _AgentResponseFormatError(
+                response.status_code,
+                content_type,
+                len(response.content),
+                str(exc),
+            )
+            if attempt >= _MAX_API_RESPONSE_RETRIES:
+                raise response_format_error from exc
+            _log.warning(
+                "Agent API 响应解析失败，将重试: status=%s content_type=%s response_bytes=%s reason=%s",
+                response_format_error.status_code,
+                response_format_error.content_type,
+                response_format_error.response_bytes,
+                response_format_error.parse_error,
+            )
     if not isinstance(result, dict):
         raise ValueError("AI 服务返回内容不是对象")
     choices = result.get("choices")
@@ -778,18 +935,19 @@ async def handle_agent(question: str, user_id: str) -> str:
             if tool_budget_exhausted:
                 return await _summarize_tool_limit(conversation)
     except (requests.RequestException, ValueError, KeyError, IndexError) as exc:
-        status_code = (
-            exc.response.status_code
-            if isinstance(exc, requests.HTTPError) and exc.response is not None
-            else None
-        )
+        status_code = getattr(exc, "status_code", None)
+        if isinstance(exc, requests.HTTPError) and exc.response is not None:
+            status_code = exc.response.status_code
         _log.warning(
-            "Agent API 请求失败: user=%s route=%s tool_count=%s error=%s status=%s",
+            "Agent API 请求失败: user=%s route=%s tool_count=%s error=%s status=%s content_type=%s response_bytes=%s reason=%s",
             user_id,
             _api_route_kind(),
             len(_AGENT_TOOLS),
             type(exc).__name__,
             status_code,
+            getattr(exc, "content_type", None),
+            getattr(exc, "response_bytes", None),
+            getattr(exc, "parse_error", None),
         )
         return messages.AGENT_API_ERROR
 
