@@ -21,9 +21,9 @@ PROCESSING_ERROR = "⚠️ **处理请求时发生错误**\n\n请稍后再试"
 
 HELP = """**📋 指令帮助**
 
-- `/list` — 查询全部服务器状态
-- `/视奸` — 查看各服在线玩家
-- `/ip` — 服务器延迟一览
+- `/list` — 查看各服域名、在线人数和玩家名称
+- `/视奸` — 查看各服在线人数和玩家名称
+- `/ip` — 查看各服连接域名
 - `/status` — 宿主机运行状态
 - `/服务器地图` — 地图和文档链接
 - `/agent <问题>` — 云端 AI 助手（仅超级用户，可读取指定文本文件）
@@ -50,7 +50,6 @@ SERVER_MAP = """**服务器地图**
 
 PLAYER_UNKNOWN = "匿名/无人"
 PLAYER_EMPTY = "无人"
-SERVER_TIMEOUT = "超时"
 
 AGENT_PERMISSION_DENIED = "⚠️ **无权限**\n\n`/agent` 仅限超级用户使用。"
 AGENT_USAGE = "**用法**：`/agent <问题>`\n\n总结文件时，请在问题中提供服务器上的绝对路径。"
@@ -65,44 +64,52 @@ AGENT_TOOL_LIMIT = "⚠️ 本轮服务器工具尝试已达上限，请缩小�
 
 def server_unknown(server_name: str) -> str:
     """未知服务器回复。"""
-    return f"**{escape_markdown(server_name)}**\n\n- **状态**：❌ 未知服务器"
+    return f"**{escape_markdown(server_name)}**\n> ❌ 未知服务器"
 
 
-def server_unreachable(server_name: str) -> str:
+def server_unreachable(server_name: str, domain: str | None = None) -> str:
     """服务器无法连接回复。"""
-    return f"**{escape_markdown(server_name)}**\n\n- **状态**：⚠️ 无法连接"
+    if domain is not None:
+        details = (
+            f"> 连接ip：{inline_code(domain or '未配置')}  \n"
+            "> 状态：⚠️ 无法连接"
+        )
+    else:
+        details = "> 状态：⚠️ 无法连接"
+    return (
+        f"**{escape_markdown(server_name)}**\n{details}"
+    )
 
 
 def server_full(
     server_name: str,
+    domain: str,
     online_players: int,
-    node_addr: str,
-    latency: str,
     players: str,
 ) -> str:
-    """完整服务器状态回复。"""
+    """生成包含域名、在线人数和玩家名称的服务器回复。"""
     return (
-        f"**{escape_markdown(server_name)}**\n\n"
-        f"- **在线人数**：{online_players} 人\n"
-        f"- **节点延迟**（{inline_code(node_addr)}）：{inline_code(latency)}\n"
-        f"- **玩家**：{inline_code(players)}"
+        f"**{escape_markdown(server_name)}**\n"
+        f"> 连接ip：{inline_code(domain or '未配置')}  \n"
+        f"> 在线人数：{online_players} 人  \n"
+        f"> 玩家：{inline_code(players)}"
     )
 
 
 def server_players(server_name: str, online_players: int, players: str) -> str:
     """服务器在线玩家回复。"""
     return (
-        f"**{escape_markdown(server_name)}**\n\n"
-        f"- **在线人数**：{online_players} 人\n"
-        f"- **玩家**：{inline_code(players)}"
+        f"**{escape_markdown(server_name)}**\n"
+        f"> 在线人数：{online_players} 人  \n"
+        f"> 玩家：{inline_code(players)}"
     )
 
 
-def server_ping(server_name: str, node_addr: str, latency: str) -> str:
-    """服务器节点延迟回复。"""
+def server_domain(server_name: str, domain: str) -> str:
+    """生成只包含服务器连接域名的回复。"""
     return (
-        f"**{escape_markdown(server_name)}**\n\n"
-        f"- **节点延迟**（{inline_code(node_addr)}）：{inline_code(latency)}"
+        f"**{escape_markdown(server_name)}**\n> "
+        f"连接ip：{inline_code(domain or '未配置')}"
     )
 
 
@@ -117,12 +124,14 @@ def server_status_list(sections: Sequence[str]) -> str:
 
 def server_player_list(sections: Sequence[str]) -> str:
     """全部服务器玩家回复。"""
+    if not sections:
+        return "**👀 在线群友**\n\n当前没有可显示的在线玩家信息。"
     return _server_sections("👀 在线群友", sections)
 
 
-def server_ping_list(sections: Sequence[str]) -> str:
-    """全部服务器延迟回复。"""
-    return _server_sections("📡 服务器延迟", sections)
+def server_domain_list(sections: Sequence[str]) -> str:
+    """全部服务器连接域名回复。"""
+    return _server_sections("🌐 服务器连接ip", sections)
 
 
 # ==================== 宿主机状态 ====================

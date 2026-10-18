@@ -6,9 +6,9 @@ from typing import Any
 
 # 只将公开查询命令放进帮助键盘，管理员控制命令仍需手动输入并校验权限。
 HELP_BUTTONS = (
-    ("help_list", "服务器状态", "/list"),
+    ("help_list", "服务器大列表", "/list"),
     ("help_players", "在线玩家", "/视奸"),
-    ("help_ip", "服务器延迟", "/ip"),
+    ("help_ip", "服务器ip", "/ip"),
     ("help_status", "宿主机状态", "/status"),
     ("help_map", "服务器地图", "/服务器地图"),
     ("help_self_muzzle", "自助口球", "/自助口球"),

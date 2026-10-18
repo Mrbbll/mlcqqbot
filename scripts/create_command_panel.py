@@ -15,9 +15,9 @@ from config import QQ_BOT_APPID, QQ_BOT_SECRET, QQ_GROUP_OPENIDS
 
 
 COMMAND_PANEL_ITEMS = [
-    {"type": "command", "name": "list", "desc": "查询全部服务器状态"},
-    {"type": "command", "name": "视奸", "desc": "查看各服在线玩家"},
-    {"type": "command", "name": "ip", "desc": "查看服务器延迟"},
+    {"type": "command", "name": "list", "desc": "查看各服域名、在线人数和玩家名称"},
+    {"type": "command", "name": "视奸", "desc": "查看各服在线人数和玩家名称"},
+    {"type": "command", "name": "ip", "desc": "查看各服连接域名"},
     {"type": "command", "name": "status", "desc": "查看宿主机运行状态"},
     {"type": "command", "name": "map", "desc": "查看地图和文档链接"},
     {"type": "command", "name": "help", "desc": "查看全部可用指令"},

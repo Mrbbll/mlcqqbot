@@ -8,6 +8,7 @@ dist/
 build/
 botpy.log*
 mlcbot.log*
+/logs/
 .vscode
 *.bin
 *.html

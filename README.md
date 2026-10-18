@@ -6,9 +6,9 @@
 
 | 命令 | 说明 |
 |------|------|
-| `@Bot list` | 查询全部 MC 服务器状态（在线/延迟/玩家） |
-| `@Bot 视奸` | 查看各服在线玩家 |
-| `@Bot ip` | 服务器延迟一览 |
+| `@Bot list` | 查看各服连接域名、在线人数和玩家名称 |
+| `@Bot 视奸` | 查看各服在线人数和玩家名称 |
+| `@Bot ip` | 查看各服连接域名 |
 | `@Bot status` | 宿主机 CPU/内存/磁盘/运行时长 |
 | `@Bot 服务器地图` | 地图和文档链接 |
 | `@Bot 指令帮助` | 命令帮助 |
@@ -27,6 +27,7 @@
 ```
 qqmlcbot/
 ├── main.py              # 日志配置与启动入口
+├── logs/                # 机器人运行日志（启动时自动创建）
 ├── bot_client.py        # QQ 事件适配层
 ├── config.py            # 配置（AppID/Secret/MCSM/超级用户）
 ├── handlers/
@@ -90,13 +91,13 @@ AGENT_API_KEY=你的云端API密钥
 AGENT_MODEL=你的模型名称
 # 可选：非敏感的服务器实例、目录和启动方式说明；内容会随 /agent 请求发送给云端 API
 AGENT_SERVER_CONTEXT=例如：生存服目录=/srv/minecraft/survival；由 systemd 服务 minecraft-survival 启动
-# 可选：将模型原始响应写入 mlcbot.log；可能包含工具调用参数，排查完成后建议关闭
+# 可选：将模型原始响应写入 logs/mlcbot.log；可能包含工具调用参数，排查完成后建议关闭
 AGENT_LOG_MODEL_RESPONSE=false
 ```
 
 `/agent <问题>` 仅供 `SUPERUSERS` 使用。Agent 会收到项目根目录、代码模块职责、MCSM 地址和投票数据库路径等非敏感结构摘要；部署相关的实例名、目录和启动方式可通过 `AGENT_SERVER_CONTEXT` 补充。不要在该变量中填写密钥、令牌或其他认证信息，内容会发送到配置的云端模型。Agent 可读取文本文件、按行读取、列出目录、按文件名或内容搜索，并在服务器默认 shell 中执行任意命令。命令使用 bot 进程权限且不设命令白名单；单次最多运行 60 秒，返回输出最多 12,000 个字符。每个请求最多执行 8 次工具调用、最多进行 5 轮；单个文件最多读取 64 KiB，文本搜索最多读取 2 MiB，并限制目录扫描量。工具定义会随每次请求发送，普通闲聊不会自动调用工具。API 服务需支持 Chat Completions 工具调用，并可返回普通 JSON 或 SSE 流式响应。
 
-排查模型返回时，可将 `AGENT_LOG_MODEL_RESPONSE` 设为 `true` 并重启 bot。原始模型响应会写入项目根目录下的 `mlcbot.log`，最多记录 64 KiB 字符；日志可能包含模型生成的命令、路径或回答内容，排查完成后请关闭该选项。
+排查模型返回时，可将 `AGENT_LOG_MODEL_RESPONSE` 设为 `true` 并重启 bot。原始模型响应会写入 `logs/mlcbot.log`，最多记录 64 KiB 字符；日志可能包含模型生成的命令、路径或回答内容，排查完成后请关闭该选项。
 
 ### 4. 启动
 
@@ -109,9 +110,9 @@ python main.py
 ### 5. 创建群聊指令面板（可选）
 
 
-指令面板只需创建一次，不要放在机器人启动流程中重复调用。脚本使用 QQ OpenAPI 的 `POST /v2/panels` 接口创建面板。业务消息记录写入 `mlcbot.log`；`botpy.log` 仅记录 SDK 的连接和鉴权信息。QQ 公域机器人只会收到 **@机器人** 的群消息，普通群聊消息不会下发给机器人，也不会写入日志。
+指令面板只需创建一次，不要放在机器人启动流程中重复调用。脚本使用 QQ OpenAPI 的 `POST /v2/panels` 接口创建面板。业务消息记录写入 `logs/mlcbot.log`；`logs/botpy.log` 仅记录 SDK 的连接和鉴权信息。QQ 公域机器人只会收到 **@机器人** 的群消息，普通群聊消息不会下发给机器人，也不会写入日志。
 
-先在目标群中 `@机器人 list` 发送任意消息，再从 `mlcbot.log` 中复制对应的群 OpenID：
+先在目标群中 `@机器人 list` 发送任意消息，再从 `logs/mlcbot.log` 中复制对应的群 OpenID：
 
 ```text
 [群消息] group=实际的group_openid user=... content=...
@@ -160,9 +161,9 @@ python scripts/create_command_panel.py
 
 ### 功能验证清单
 
-- [ ] `@Bot list` — 返回 4 个服务器状态、延迟、玩家
-- [ ] `@Bot 视奸` — 返回各服在线玩家
-- [ ] `@Bot ip` — 返回各服延迟
+- [ ] `@Bot list` — 返回各服域名、在线人数和玩家名称
+- [ ] `@Bot 视奸` — 返回各服在线人数和玩家名称
+- [ ] `@Bot ip` — 返回各服连接域名
 - [ ] `@Bot status` — 返回宿主机 CPU/内存/磁盘/运行时长
 - [ ] `@Bot 服务器地图` — 返回地图和文档链接
 - [ ] `@Bot /开启 scf` — MCSM 开启实例（超级用户）
@@ -188,7 +189,6 @@ from utils.mc_utils import get_status, get_players
 status = asyncio.run(get_status("127.0.0.1:25566"))
 if status:
     print(f"在线人数: {status.players.online}")
-    print(f"延迟: {status.latency:.2f}ms")
     print(f"玩家: {get_players(status)}")
 ```
 

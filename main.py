@@ -20,14 +20,16 @@ from utils.reply_payload import (
 
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+LOG_DIR = Path(__file__).with_name("logs")
 
 
 def configure_app_logger() -> logging.Logger:
-    """为业务日志配置独立文件，避免与 botpy SDK 日志混淆。"""
+    """将业务日志写入项目的 logs 目录。"""
     logger = logging.getLogger("mlcbot")
     logger.setLevel(logging.INFO)
 
-    log_path = Path(__file__).with_name("mlcbot.log").resolve()
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = (LOG_DIR / "mlcbot.log").resolve()
     has_file_handler = any(
         isinstance(handler, TimedRotatingFileHandler)
         and Path(handler.baseFilename).resolve() == log_path
@@ -57,7 +59,16 @@ def main():
     intents.public_messages = True
     intents.interaction = True
 
-    client = MLCBot(intents=intents)
+    client = MLCBot(
+        intents=intents,
+        ext_handlers={
+            "handler": TimedRotatingFileHandler,
+            "filename": str(LOG_DIR / "%(name)s.log"),
+            "when": "D",
+            "backupCount": 7,
+            "encoding": "utf-8",
+        },
+    )
     _log.info("正在启动机器人... AppID: %s", QQ_BOT_APPID)
     client.run(appid=QQ_BOT_APPID, secret=QQ_BOT_SECRET)
 
