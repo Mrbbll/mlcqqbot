@@ -89,13 +89,13 @@ POLL_DB_PATH=D:\desktop\bot\mlcqqbot\data\polls.sqlite3
 AGENT_API_URL=https://api.example.com/v1/chat/completions
 AGENT_API_KEY=你的云端API密钥
 AGENT_MODEL=你的模型名称
-# 可选：非敏感的服务器实例、目录和启动方式说明；内容会随 /agent 请求发送给云端 API
+# 可选：非敏感的服务器实例、目录和启动方式说明；内容会随 agent 自动回复请求发送给云端 API
 AGENT_SERVER_CONTEXT=例如：生存服目录=/srv/minecraft/survival；由 systemd 服务 minecraft-survival 启动
 # 可选：将模型原始响应写入 logs/mlcbot.log；可能包含工具调用参数，排查完成后建议关闭
 AGENT_LOG_MODEL_RESPONSE=false
 ```
 
-`/agent <问题>` 仅供 `SUPERUSERS` 使用。Agent 会收到项目根目录、代码模块职责、MCSM 地址和投票数据库路径等非敏感结构摘要；部署相关的实例名、目录和启动方式可通过 `AGENT_SERVER_CONTEXT` 补充。不要在该变量中填写密钥、令牌或其他认证信息，内容会发送到配置的云端模型。Agent 可读取文本文件、按行读取、列出目录、按文件名或内容搜索，并在服务器默认 shell 中执行任意命令。命令使用 bot 进程权限且不设命令白名单；单次最多运行 60 秒，返回输出最多 12,000 个字符。每个请求最多执行 8 次工具调用、最多进行 5 轮；单个文件最多读取 64 KiB，文本搜索最多读取 2 MiB，并限制目录扫描量。工具定义会随每次请求发送，普通闲聊不会自动调用工具。API 服务需支持 Chat Completions 工具调用，并可返回普通 JSON 或 SSE 流式响应。
+全量接收模式开启后，群聊中未匹配到现有指令的普通消息有 20% 概率触发 Agent 自动回复；未匹配到指令的 @机器人消息会直接交给 Agent。Agent 会收到当前群最近十分钟的消息上下文；消息只保存在进程内存中，每群最多缓存 200 条、最多跟踪 64 个群，传给模型的上下文最多 40 条或 8,000 个字符。非超级用户可以使用普通对话，但服务器文件、目录和命令工具仍仅限 `SUPERUSERS`，服务器结构摘要也只会提供给超级用户。Agent 会收到项目根目录、代码模块职责、MCSM 地址和投票数据库路径等非敏感结构摘要；部署相关的实例名、目录和启动方式可通过 `AGENT_SERVER_CONTEXT` 补充。不要在该变量中填写密钥、令牌或其他认证信息，内容会发送到配置的云端模型。Agent 可读取文本文件、按行读取、列出目录、按文件名或内容搜索，并在服务器默认 shell 中执行命令。命令使用 bot 进程权限且不设命令白名单；单次最多运行 60 秒，返回输出最多 12,000 个字符。每个请求最多执行 8 次工具调用、最多进行 5 轮；单个文件最多读取 64 KiB，文本搜索最多读取 2 MiB，并限制目录扫描量。工具定义会随每次请求发送。API 服务需支持 Chat Completions 工具调用，并可返回普通 JSON 或 SSE 流式响应。
 
 排查模型返回时，可将 `AGENT_LOG_MODEL_RESPONSE` 设为 `true` 并重启 bot。原始模型响应会写入 `logs/mlcbot.log`，最多记录 64 KiB 字符；日志可能包含模型生成的命令、路径或回答内容，排查完成后请关闭该选项。
 

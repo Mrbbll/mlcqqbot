@@ -58,8 +58,8 @@ def get_instance_id(instance_name: str) -> str:
     """根据实例简称获取 MCSM 实例 UUID"""
     mapping = {
         "scf":       "ab1618cf3a484ebd9a8d1bc8e15222b7",   # 生存服
-        "mod":       "27ea20d72183463bb4cf090873793cc1",   # 冒险服
-        "mod1":      "8ab80a3c099641f592f16164b6fb620a",   # 科技服
+        "mod1":       "27ea20d72183463bb4cf090873793cc1",   # 冒险服
+        "mod2":      "8ab80a3c099641f592f16164b6fb620a",   # 科技服
         "minigames": "63da3dc840434753b0abd2e62a08746c",   # 小游戏服
         "bot":       "d575610bc678421faf1fb524efd71a46",   # 机器人
     }
