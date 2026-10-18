@@ -13,6 +13,8 @@ from utils.markdown import markdown_payload
 FISHING_MIN_DELAY_SECONDS = 1
 FISHING_MAX_DELAY_SECONDS = 60
 FISHING_HOOK_WINDOW_SECONDS = 2.0
+# The immediate command reply uses sequence 1 for the source message.
+_FISHING_BITE_REPLY_SEQUENCE = 2
 
 _FISH_CATALOG = (
     ("鲫鱼", 80, 350),
@@ -42,6 +44,7 @@ class _FishingSession:
     group_openid: str
     user_openid: str
     token: str
+    reply_message_id: str
     task: asyncio.Task[None] | None = None
     bite_deadline: float | None = None
 
@@ -70,11 +73,12 @@ async def handle_start_fishing(
     user_openid: str,
     *,
     is_group: bool = True,
+    reply_message_id: str | None = None,
 ) -> str:
     """创建钓鱼会话并后台等待鱼上钩。"""
     if not is_group:
         return messages.FISHING_GROUP_ONLY
-    if not api or not group_openid or not user_openid:
+    if not api or not group_openid or not user_openid or not reply_message_id:
         return messages.FISHING_CONTEXT_MISSING
 
     player_key = (group_openid, user_openid)
@@ -87,7 +91,12 @@ async def handle_start_fishing(
     token = secrets.token_urlsafe(8)
     while token in _sessions_by_token:
         token = secrets.token_urlsafe(8)
-    session = _FishingSession(group_openid, user_openid, token)
+    session = _FishingSession(
+        group_openid,
+        user_openid,
+        token,
+        reply_message_id,
+    )
     _sessions_by_player[player_key] = session
     _sessions_by_token[token] = session
     delay = draw_fishing_delay()
@@ -119,6 +128,8 @@ async def _announce_bite(
         )
         await api.post_group_message(
             group_openid=session.group_openid,
+            msg_id=session.reply_message_id,
+            msg_seq=_FISHING_BITE_REPLY_SEQUENCE,
             **payload,
         )
         session.bite_deadline = (

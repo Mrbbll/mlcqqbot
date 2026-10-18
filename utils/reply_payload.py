@@ -1,7 +1,7 @@
 """命令回复与内联键盘载荷构造。"""
 from typing import Any
 
-from utils.command_text import normalize_command
+from utils.command_text import has_command_prefix
 from utils.keyboard import (
     help_keyboard_payload,
     lottery_keyboard_payload,
@@ -13,17 +13,20 @@ from utils.permissions import check_superuser
 
 def is_help_command(content: str) -> bool:
     """判断消息是否为帮助命令。"""
-    return normalize_command(content).startswith(("/指令帮助", "/help"))
+    return has_command_prefix(content, ("/指令帮助", "/help"))
 
 
 def is_lottery_command(content: str) -> bool:
     """判断消息是否为抽奖命令。"""
-    return normalize_command(content).startswith("/抽奖")
+    return has_command_prefix(content, ("/抽奖",))
 
 
 def is_poll_command(content: str) -> bool:
     """判断消息是否为投票发起命令，而不是投票结果命令。"""
-    return normalize_command(content).split(maxsplit=1)[0] == "/投票"
+    return has_command_prefix(content, ("/投票",)) and not has_command_prefix(
+        content,
+        ("/投票结果",),
+    )
 
 
 def command_reply_payload(
