@@ -18,6 +18,25 @@ def get_env_list(name: str) -> list[str]:
     return [value.strip() for value in os.getenv(name, "").split(",") if value.strip()]
 
 
+def get_env_int(
+    name: str,
+    default: int,
+    minimum: int,
+    maximum: int | None = None,
+) -> int:
+    """读取整数环境变量并校验下限及可选上限，无效值使用默认值。"""
+    value = os.getenv(name, "").strip()
+    if not value:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    if parsed < minimum or (maximum is not None and parsed > maximum):
+        return default
+    return parsed
+
+
 # ==================== 超级用户 ====================
 SUPERUSERS = get_env_list("SUPERUSERS")
 
@@ -35,6 +54,14 @@ AGENT_LOG_MODEL_RESPONSE = os.getenv("AGENT_LOG_MODEL_RESPONSE", "").strip().cas
 
 # ==================== QQ 群聊指令面板 ====================
 QQ_GROUP_OPENIDS = get_env_list("QQ_GROUP_OPENIDS")
+
+# ==================== Gitee 提交通知 ====================
+GITEE_USERS = get_env_list("GITEE_USERS")
+GITEE_NOTIFY_GROUPS = get_env_list("GITEE_NOTIFY_GROUPS")
+GITEE_TOKEN = os.getenv("GITEE_TOKEN", "").strip()
+GITEE_POLL_INTERVAL = get_env_int("GITEE_POLL_INTERVAL", 60, 5)
+GITEE_REQUEST_TIMEOUT = get_env_int("GITEE_REQUEST_TIMEOUT", 20, 1, 120)
+GITEE_MAX_COMMITS = get_env_int("GITEE_MAX_COMMITS", 10, 1, 20)
 
 # ==================== 群聊投票 ====================
 PROJECT_ROOT = Path(__file__).resolve().parent

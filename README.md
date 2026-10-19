@@ -29,9 +29,10 @@ qqmlcbot/
 ├── main.py              # 日志配置与启动入口
 ├── logs/                # 机器人运行日志（启动时自动创建）
 ├── bot_client.py        # QQ 事件适配层
-├── config.py            # 配置（AppID/Secret/MCSM/超级用户）
+├── config.py            # 配置（AppID/Secret/MCSM/Gitee/超级用户）
 ├── handlers/
 │   ├── server_query.py  # list/视奸/ip/服务器地图
+│   ├── gitee.py         # Gitee 公开 Push 提交通知
 │   ├── host_status.py   # status 宿主机监控
 │   ├── mcsm_control.py  # MCSM 面板命令
 │   ├── lottery.py       # 抽奖与群成员禁言
@@ -93,9 +94,20 @@ AGENT_MODEL=你的模型名称
 AGENT_SERVER_CONTEXT=例如：生存服目录=/srv/minecraft/survival；由 systemd 服务 minecraft-survival 启动
 # 可选：将模型原始响应写入 logs/mlcbot.log；可能包含工具调用参数，排查完成后建议关闭
 AGENT_LOG_MODEL_RESPONSE=false
+# Gitee 公开 Push 提交通知；用户名、群 OpenID 均用英文逗号分隔
+GITEE_USERS=your-gitee-login
+GITEE_NOTIFY_GROUPS=openid_group_001
+GITEE_TOKEN=
+GITEE_POLL_INTERVAL=60
+GITEE_REQUEST_TIMEOUT=20
+GITEE_MAX_COMMITS=10
 ```
 
-全量接收模式开启后，群聊中未匹配到现有指令的普通消息有 20% 概率触发 Agent 自动回复；未匹配到指令的 @机器人消息会直接交给 Agent。Agent 会收到当前群最近十分钟的消息上下文；消息只保存在进程内存中，每群最多缓存 200 条、最多跟踪 64 个群，传给模型的上下文最多 40 条或 8,000 个字符。非超级用户可以使用普通对话，但服务器文件、目录和命令工具仍仅限 `SUPERUSERS`，服务器结构摘要也只会提供给超级用户。Agent 会收到项目根目录、代码模块职责、MCSM 地址和投票数据库路径等非敏感结构摘要；部署相关的实例名、目录和启动方式可通过 `AGENT_SERVER_CONTEXT` 补充。不要在该变量中填写密钥、令牌或其他认证信息，内容会发送到配置的云端模型。Agent 可读取文本文件、按行读取、列出目录、按文件名或内容搜索，并在服务器默认 shell 中执行命令。命令使用 bot 进程权限且不设命令白名单；单次最多运行 60 秒，返回输出最多 12,000 个字符。每个请求最多执行 8 次工具调用、最多进行 5 轮；单个文件最多读取 64 KiB，文本搜索最多读取 2 MiB，并限制目录扫描量。工具定义会随每次请求发送。API 服务需支持 Chat Completions 工具调用，并可返回普通 JSON 或 SSE 流式响应。
+Gitee 监听仅处理配置用户本人发起的公开 Push。`GITEE_NOTIFY_GROUPS` 填 QQ 群 OpenID；通知会回复该群最近五分钟内收到的消息。没有可用消息时通知会暂存，等群内有新消息后再发送。单条群消息最多作为 5 条被动回复的锚点；达到上限后队列会等待新的群消息。队列保存在进程内存中，重启后清空。每个群每分钟最多发送一条提交通知；冷却期间新发现的活动会跳过。`GITEE_TOKEN` 和 `GITEE_POLL_INTERVAL` 可选，轮询间隔最小为 5 秒。
+
+回复目标只从机器人实际收到的群消息中选择。当前公域机器人默认只收到 @机器人的群消息；开启全量消息权限后，普通群消息也可作为回复目标。
+
+全量接收模式开启后，群聊中未匹配到现有指令的普通消息有 20% 概率触发 Agent 自动回复；未匹配到指令的 @机器人消息会直接交给 Agent。Agent 会收到当前群最近十分钟的消息上下文；消息只保存在进程内存中，每群最多缓存 200 条、最多跟踪 64 个群，传给模型的上下文最多 40 条或 8,000 个字符。非超级用户可以使用普通对话，但服务器文件、目录和命令工具仍仅限 `SUPERUSERS`，服务器结构摘要也只会提供给超级用户。Agent 会收到项目根目录、代码模块职责、MCSM 地址和投票数据库路径等非敏感结构摘要；部署相关的实例名、目录和启动方式可通过 `AGENT_SERVER_CONTEXT` 补充。不要在该变量中填写密钥、令牌或其他认证信息，内容会发送到配置的云端模型。Agent 可读取文本文件、按行读取、列出目录、按文件名或内容搜索，并在服务器默认 shell 中执行命令。命令使用 bot 进程权限且不设命令白名单；单次最多运行 60 秒，返回输出最多 12,000 个字符。每个请求最多执行 8 次工具调用、最多进行 5 轮；网络或临时服务错误、响应格式错误最多重试 3 次，间隔为 1、2、4 秒。单个文件最多读取 64 KiB，文本搜索最多读取 2 MiB，并限制目录扫描量。工具定义会随每次请求发送。API 服务需支持 Chat Completions 工具调用，并可返回普通 JSON 或 SSE 流式响应。
 
 排查模型返回时，可将 `AGENT_LOG_MODEL_RESPONSE` 设为 `true` 并重启 bot。原始模型响应会写入 `logs/mlcbot.log`，最多记录 64 KiB 字符；日志可能包含模型生成的命令、路径或回答内容，排查完成后请关闭该选项。
 

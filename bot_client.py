@@ -4,6 +4,7 @@ import random
 import re
 import traceback
 from collections import OrderedDict
+from time import monotonic
 
 from botpy import Client
 from botpy.message import C2CMessage, GroupMessage
@@ -11,6 +12,10 @@ from botpy.message import C2CMessage, GroupMessage
 from config import QQ_BOT_APPID
 from handlers.agent import handle_agent
 from handlers.command_router import route_command
+from handlers.gitee import (
+    handle_group_message as handle_gitee_group_message,
+    start_gitee_monitor,
+)
 from handlers.interaction import handle_interaction
 from utils import messages
 from utils.command_text import clean_message
@@ -35,8 +40,9 @@ class MLCBot(Client):
     """将 QQ 事件转换为命令路由和按钮互动调用。"""
 
     async def on_ready(self):
-        """记录机器人成功连接到 QQ 网关。"""
+        """记录机器人上线状态并启动 Gitee 后台监听。"""
         _log.info("机器人已上线！AppID: %s", QQ_BOT_APPID)
+        await start_gitee_monitor()
 
     async def on_group_add_robot(self, event):
         """记录机器人加入群聊的事件。"""
@@ -77,7 +83,8 @@ async def handle_group_message(
     api=None,
     is_at_message: bool = False,
 ) -> None:
-    """记录群消息、处理重复事件，并把未匹配消息交给 agent 兜底。"""
+    """记录群消息、尝试提交通知回复，并把未匹配消息交给 agent 兜底。"""
+    received_at = monotonic()
     is_duplicate, state = _register_group_message(message, is_at_message)
     if is_duplicate:
         _log.debug(
@@ -116,7 +123,7 @@ async def handle_group_message(
     )
     if state is not None:
         if not handled and state.get("at_message_pending"):
-            await handle_command_message(
+            handled = await handle_command_message(
                 message,
                 user_id,
                 is_group=True,
@@ -126,6 +133,14 @@ async def handle_group_message(
             state["status"] = "handled"
         else:
             state["status"] = "handled" if handled else "unmatched"
+    try:
+        await handle_gitee_group_message(
+            message,
+            replies_already_sent=handled,
+            received_at=received_at,
+        )
+    except Exception:
+        _log.exception("处理 Gitee 提交通知队列失败")
 
 
 def _group_user_id(message: GroupMessage) -> str:
