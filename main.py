@@ -9,16 +9,6 @@ from botpy import Intents
 from bot_client import MLCBot
 from config import QQ_BOT_APPID, QQ_BOT_SECRET
 
-# 兼容已有调用方；具体实现已拆分到对应模块。
-from handlers.command_router import route_command, should_reply
-from utils.command_text import clean_message
-from utils.reply_payload import (
-    command_reply_payload,
-    is_help_command,
-    is_lottery_command,
-)
-
-
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 LOG_DIR = Path(__file__).with_name("logs")
 

@@ -29,27 +29,39 @@
 qqmlcbot/
 ├── main.py              # 日志配置与启动入口
 ├── logs/                # 机器人运行日志（启动时自动创建）
-├── bot_client.py        # QQ 事件适配层
+├── bot_client.py        # QQ 事件适配与跨功能消息编排
 ├── config.py            # 配置（AppID/Secret/MCSM/Gitee/超级用户）
 ├── handlers/
-│   ├── server_query.py  # list/视奸/ip/服务器地图
-│   ├── gitee.py         # Gitee 公开 Push 提交通知
-│   ├── host_status.py   # status 宿主机监控
-│   ├── mcsm_control.py  # MCSM 面板命令
-│   ├── lottery.py       # 抽奖与群成员禁言
-│   ├── group_mute.py    # QQ 群成员禁言接口
-│   ├── self_muzzle.py   # 自助口球命令
-│   ├── poll.py          # 投票命令与结果查询
-│   ├── command_router.py # 命令路由
-│   └── interaction.py   # 按钮回调处理
-├── utils/
-│   ├── mc_utils.py      # MC 服务器查询工具函数
-│   ├── command_text.py  # 命令文本清洗
-│   ├── messages.py      # 统一回复文案与 Markdown 格式化
-│   ├── permissions.py   # 超级用户鉴权
-│   ├── poll_store.py    # SQLite 投票状态与计票
-│   ├── tencent_sheet.py # 腾讯在线表格候选项读取
-│   └── reply_payload.py # Markdown 与键盘回复载荷
+│   ├── command_router.py # 保留的文本命令路由入口
+├── features/            # 按业务功能拆分的模块
+│   ├── agent/            # AI 对话与服务器工具
+│   ├── commands/         # 命令文本清洗和标准化
+│   ├── fishing/          # 钓鱼命令、会话和按钮处理
+│   ├── gitee_notifications/ # Gitee Push 轮询与群通知
+│   ├── interactions/     # 跨功能按钮回调总分发
+│   ├── mcsm_control/     # MCSM 实例控制命令
+│   ├── muzzle/           # 抽奖、自助禁言和禁言按钮
+│   ├── oopz/             # OOPZ 与 KOOK 邀请链接
+│   ├── poll/              # 投票命令、存储流程和按钮处理
+│   ├── security/         # 权限校验
+│   └── server/            # Minecraft 查询与宿主机状态
+├── external_tools/       # 外部平台、服务和存储适配器
+│   ├── gitee/             # Gitee REST API
+│   ├── mcsm/              # MCSM API
+│   ├── minecraft/         # Minecraft 状态查询
+│   ├── qq/                # QQ API 与 botpy 兼容适配
+│   ├── storage/           # SQLite 投票仓库和群消息上下文
+│   └── tencent_sheet/     # 腾讯在线表格读取
+├── presentation/         # 回复文案、Markdown、键盘和模板
+│   ├── templates/         # 所有 Markdown 回复模板，按功能分类
+│   │   ├── messages/      # 通用、Agent、服务器、投票等回复
+│   │   ├── help.md
+│   │   ├── lottery_prompt.md
+│   │   └── server_map.md
+│   ├── keyboard.py       # QQ 内联键盘构造
+│   ├── markdown.py       # Markdown 消息格式化
+│   ├── messages.py       # 统一从模板渲染回复
+│   └── reply_payload.py  # 命令回复载荷构造
 ├── scripts/
 │   └── create_command_panel.py  # 创建指定群的指令面板（一次性执行）
 ├── .env                 # 环境变量（敏感信息，勿提交 Git）
@@ -199,7 +211,7 @@ python scripts/create_command_panel.py
 
 ```python
 import asyncio
-from utils.mc_utils import get_status, get_players
+from external_tools.minecraft.status_client import get_status, get_players
 
 # 测试连接 MC 服务器
 status = asyncio.run(get_status("127.0.0.1:25566"))

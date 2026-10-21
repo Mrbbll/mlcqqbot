@@ -1,0 +1,1 @@
+- **CPU 频率**：当前 $current MHz，最小 $minimum MHz，最大 $maximum MHz

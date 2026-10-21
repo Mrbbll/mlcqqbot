@@ -1,31 +1,34 @@
 """文本命令识别与业务处理器路由。"""
 from typing import Any
 
-from handlers.community_invites import handle_community_invites
-from handlers.fishing import handle_start_fishing
-from handlers.host_status import handle_status
-from handlers.lottery import handle_lottery
-from handlers.mcsm_control import (
-    handle_execute,
-    handle_kill,
-    handle_open,
-    handle_stop,
-)
-from handlers.poll import (
-    POLL_COMMAND,
-    POLL_RESULTS_COMMAND,
-    handle_poll,
-    handle_poll_results,
-)
-from handlers.self_muzzle import SELF_MUZZLE_COMMAND, handle_self_muzzle
-from handlers.server_query import (
+from features.fishing.commands import handle_start_fishing
+from features.server.query import (
     handle_help,
     handle_ip,
     handle_list,
     handle_map,
     handle_shijian,
 )
-from utils.command_text import has_command_prefix, normalize_command
+from features.server.status import handle_status
+from features.oopz.commands import handle_invites
+from features.muzzle.commands import (
+    SELF_MUZZLE_COMMAND,
+    handle_lottery,
+    handle_self_muzzle,
+)
+from features.mcsm_control.commands import (
+    handle_execute,
+    handle_kill,
+    handle_open,
+    handle_stop,
+)
+from features.poll.commands import (
+    POLL_COMMAND,
+    POLL_RESULTS_COMMAND,
+    handle_poll,
+    handle_poll_results,
+)
+from features.commands.text import has_command_prefix, normalize_command
 
 
 COMMAND_PREFIXES = (
@@ -60,7 +63,7 @@ async def route_command(
     if has_command_prefix(command, ("/服务器地图", "/map")):
         return await handle_map()
     if has_command_prefix(command, ("/oopz", "/kook")):
-        return await handle_community_invites()
+        return await handle_invites()
     if has_command_prefix(command, ("/list",)):
         return await handle_list()
     if has_command_prefix(command, ("/视奸",)):

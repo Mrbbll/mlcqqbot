@@ -10,19 +10,22 @@ from botpy import Client
 from botpy.message import C2CMessage, GroupMessage
 
 from config import QQ_BOT_APPID
-from handlers.agent import handle_agent
 from handlers.command_router import route_command
-from handlers.gitee import (
+from features.agent.service import handle_agent
+from features.gitee_notifications.monitor import (
     handle_group_message as handle_gitee_group_message,
     start_gitee_monitor,
 )
-from handlers.interaction import handle_interaction
-from utils import messages
-from utils.command_text import clean_message
-from utils.group_memory import get_recent_group_messages, record_group_message
-from utils.markdown import markdown_payload
-from utils.reply_payload import command_reply_payload
-from utils.botpy_compat import install_group_message_parser_compat
+from features.interactions.dispatcher import handle_interaction
+from presentation import messages
+from features.commands.text import clean_message
+from external_tools.storage.group_memory import (
+    get_recent_group_messages,
+    record_group_message,
+)
+from presentation.markdown import markdown_payload
+from presentation.reply_payload import command_reply_payload
+from external_tools.qq.botpy_compat import install_group_message_parser_compat
 
 
 install_group_message_parser_compat()
@@ -258,4 +261,5 @@ async def _agent_reply_text(
         group_id,
         exclude_message_id=str(getattr(message, "id", "") or ""),
     )
-    return await handle_agent(question, user_id, group_context=group_context)
+    response = await handle_agent(question, user_id, group_context=group_context)
+    return messages.agent_reply(response)
