@@ -31,8 +31,8 @@ install_group_message_parser_compat()
 _log = logging.getLogger("mlcbot")
 _ERROR_REPLY = markdown_payload(messages.PROCESSING_ERROR)
 _GROUP_MESSAGE_DEDUP_LIMIT = 4096
-_AGENT_AUTO_REPLY_PROBABILITY = 0.2
-_AT_MENTION_PATTERN = re.compile(r"<@!?\w+>")
+_AGENT_AUTO_REPLY_PROBABILITY = 0.05
+_AT_MENTION_PATTERN = re.compile(r"<@!?(\w+)>")
 _seen_group_messages: OrderedDict[tuple[str, str], dict[str, object]] = OrderedDict()
 
 
@@ -149,10 +149,12 @@ def _group_user_id(message: GroupMessage) -> str:
 
 
 def _has_at_mention(message: GroupMessage) -> bool:
-    """检查全量消息中的 QQ mention 标记及已解析 mention 列表。"""
+    """检查全量消息是否明确 @ 了当前机器人。"""
     content = getattr(message, "content", "") or ""
-    mentions = getattr(message, "mentions", None)
-    return bool(_AT_MENTION_PATTERN.search(content) or mentions)
+    bot_id = str(QQ_BOT_APPID or "").strip()
+    if not bot_id:
+        return False
+    return bot_id in _AT_MENTION_PATTERN.findall(content)
 
 
 def _register_group_message(

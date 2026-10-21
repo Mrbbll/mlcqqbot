@@ -639,7 +639,7 @@ def _is_retryable_api_error(error: requests.RequestException) -> bool:
         (
             requests.ConnectionError,
             requests.Timeout,
-            requests.ChunkedEncodingError,
+            requests.exceptions.ChunkedEncodingError,
         ),
     )
 

@@ -55,6 +55,10 @@ AGENT_LOG_MODEL_RESPONSE = os.getenv("AGENT_LOG_MODEL_RESPONSE", "").strip().cas
 # ==================== QQ 群聊指令面板 ====================
 QQ_GROUP_OPENIDS = get_env_list("QQ_GROUP_OPENIDS")
 
+# ==================== OOPZ / KOOK 邀请链接 ====================
+OOPZ_INVITE_URL = os.getenv("OOPZ_INVITE_URL", "").strip()
+KOOK_INVITE_URL = os.getenv("KOOK_INVITE_URL", "").strip()
+
 # ==================== Gitee 提交通知 ====================
 GITEE_USERS = get_env_list("GITEE_USERS")
 GITEE_NOTIFY_GROUPS = get_env_list("GITEE_NOTIFY_GROUPS")

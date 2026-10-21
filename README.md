@@ -11,6 +11,7 @@
 | `@Bot ip` | 查看各服连接域名 |
 | `@Bot status` | 宿主机 CPU/内存/磁盘/运行时长 |
 | `@Bot 服务器地图` | 地图和文档链接 |
+| `@Bot oopz` / `@Bot kook` | OOPZ 和 KOOK 群邀请链接 |
 | `@Bot 指令帮助` | 命令帮助 |
 | `@Bot /执行 <实例> <命令>` | MCSM 面板发命令（仅管理员） |
 | `@Bot /开启 <实例>` | MCSM 开启实例（仅管理员） |
@@ -78,6 +79,9 @@ conda run -n mlcqqbot python main.py
 QQ_BOT_APPID=102090462
 QQ_BOT_SECRET=你的AppSecret
 SUPERUSERS=QQ号1,QQ号2
+# 社群邀请链接
+OOPZ_INVITE_URL=https://oopz.cn/i/lA2eHI
+KOOK_INVITE_URL=https://kook.top/W0Fa5D
 # 创建指令面板的目标群 OpenID，多个值用英文逗号分隔
 QQ_GROUP_OPENIDS=openid_group_001,openid_group_002
 # 投票候选项来源；下面是当前“整合包收集”表格的默认值，可按需覆盖
@@ -142,7 +146,7 @@ python scripts/create_command_panel.py --dry-run
 python scripts/create_command_panel.py
 ```
 
-面板包含现有查询命令、`开始钓鱼`，以及 `投票` 和 `投票结果`。投票入口仍会在业务层校验 `SUPERUSERS`；MCSM 管理指令不会显示在公共面板中。
+面板包含现有查询命令、`oopz`、`kook`、`开始钓鱼`，以及 `投票` 和 `投票结果`。投票入口仍会在业务层校验 `SUPERUSERS`；MCSM 管理指令不会显示在公共面板中。
 
 ### 6. 群聊投票
 

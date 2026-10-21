@@ -5,6 +5,7 @@
 """
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
+from urllib.parse import quote, urlsplit
 
 from utils.markdown import escape_markdown, inline_code, mention_user
 
@@ -26,6 +27,7 @@ HELP = """**📋 指令帮助**
 - `/ip` — 查看各服连接域名
 - `/status` — 宿主机运行状态
 - `/服务器地图` — 地图和文档链接
+- `/oopz` 或 `/kook` — 查看 OOPZ 和 KOOK 群邀请链接
 - `/自助口球` — 随机禁言自己 1–60 分钟（仅群聊）
 - `/开始钓鱼` — 开始钓鱼小游戏（仅群聊）
 
@@ -46,6 +48,36 @@ SERVER_MAP = """**服务器地图**
 
 - **生存服网页地图**：`43.248.188.28:19423`
 - **服务器文档**：[打开服务器文档](https://docs.qq.com/aio/DRnp3YU9sRmxWYnVB)"""
+
+
+def _format_invite_link(platform: str, url: str) -> str:
+    """将有效的 HTTP(S) 邀请地址格式化为链接，否则以文本显示配置值。"""
+    value = url.strip()
+    try:
+        parsed_url = urlsplit(value)
+        is_http_url = (
+            parsed_url.scheme.lower() in {"http", "https"}
+            and bool(parsed_url.netloc)
+        )
+    except ValueError:
+        is_http_url = False
+
+    if is_http_url:
+        safe_url = quote(value, safe=":/?#[]@!$&'*+,;=%-._~")
+        return f"- **{platform}**：[打开邀请链接]({safe_url})"
+    return f"- **{platform}**：{inline_code(value or '未配置')}"
+
+
+def community_invite_links(oopz_url: str, kook_url: str) -> str:
+    """生成 OOPZ 和 KOOK 社群邀请链接回复。"""
+    return "\n".join(
+        (
+            "**社群邀请链接**",
+            "",
+            _format_invite_link("OOPZ", oopz_url),
+            _format_invite_link("KOOK", kook_url),
+        )
+    )
 
 PLAYER_UNKNOWN = "匿名/无人"
 PLAYER_EMPTY = "无人"

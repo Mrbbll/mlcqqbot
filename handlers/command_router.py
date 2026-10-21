@@ -1,6 +1,7 @@
 """文本命令识别与业务处理器路由。"""
 from typing import Any
 
+from handlers.community_invites import handle_community_invites
 from handlers.fishing import handle_start_fishing
 from handlers.host_status import handle_status
 from handlers.lottery import handle_lottery
@@ -29,7 +30,7 @@ from utils.command_text import has_command_prefix, normalize_command
 
 COMMAND_PREFIXES = (
     "/list", "/视奸", "/ip", "/status", "/map", "/help",
-    "/服务器地图", "/指令帮助",
+    "/服务器地图", "/指令帮助", "/oopz", "/kook",
     "/执行", "/开启", "/停止", "/终止", "/抽奖",
     "/开始钓鱼",
     POLL_RESULTS_COMMAND, POLL_COMMAND,
@@ -58,6 +59,8 @@ async def route_command(
         return await handle_help()
     if has_command_prefix(command, ("/服务器地图", "/map")):
         return await handle_map()
+    if has_command_prefix(command, ("/oopz", "/kook")):
+        return await handle_community_invites()
     if has_command_prefix(command, ("/list",)):
         return await handle_list()
     if has_command_prefix(command, ("/视奸",)):

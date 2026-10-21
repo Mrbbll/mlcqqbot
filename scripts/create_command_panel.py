@@ -20,6 +20,8 @@ COMMAND_PANEL_ITEMS = [
     {"type": "command", "name": "ip", "desc": "查看各服连接域名"},
     {"type": "command", "name": "status", "desc": "查看宿主机运行状态"},
     {"type": "command", "name": "map", "desc": "查看地图和文档链接"},
+    {"type": "command", "name": "oopz", "desc": "查看 OOPZ 和 KOOK 群邀请链接"},
+    {"type": "command", "name": "kook", "desc": "查看 OOPZ 和 KOOK 群邀请链接"},
     {"type": "command", "name": "help", "desc": "查看全部可用指令"},
     {"type": "command", "name": "执行", "desc":"执行命令到实例"},
     {"type": "command", "name": "投票", "desc": "管理员发起整合包投票"},
