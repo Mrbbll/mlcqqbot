@@ -16,6 +16,10 @@ from features.gitee_notifications.monitor import (
     handle_group_message as handle_gitee_group_message,
     start_gitee_monitor,
 )
+from features.qq_game_bridge import (
+    forward_group_message as forward_group_message_to_game,
+    start_onebot_ws_server,
+)
 from features.interactions.dispatcher import handle_interaction
 from presentation import messages
 from features.commands.text import clean_message
@@ -43,9 +47,10 @@ class MLCBot(Client):
     """将 QQ 事件转换为命令路由和按钮互动调用。"""
 
     async def on_ready(self):
-        """记录机器人上线状态并启动 Gitee 后台监听。"""
+        """记录机器人上线状态并启动后台监听和 OneBot WebSocket 服务。"""
         _log.info("机器人已上线！AppID: %s", QQ_BOT_APPID)
         await start_gitee_monitor()
+        await start_onebot_ws_server()
 
     async def on_group_add_robot(self, event):
         """记录机器人加入群聊的事件。"""
@@ -86,7 +91,7 @@ async def handle_group_message(
     api=None,
     is_at_message: bool = False,
 ) -> None:
-    """记录群消息、尝试提交通知回复，并把未匹配消息交给 agent 兜底。"""
+    """先转发每条唯一群消息，再记录消息并尝试命令、Agent 和通知处理。"""
     received_at = monotonic()
     is_duplicate, state = _register_group_message(message, is_at_message)
     if is_duplicate:
@@ -106,6 +111,11 @@ async def handle_group_message(
             )
             state["status"] = "handled"
         return
+
+    try:
+        await forward_group_message_to_game(message)
+    except Exception:
+        _log.exception("转发 QQ 群消息到游戏失败")
 
     user_id = _group_user_id(message)
     group_id = getattr(message, "group_openid", "") or ""
@@ -169,8 +179,8 @@ def _register_group_message(
     if message_id is None:
         return False, None
 
-    message_seq = getattr(message, "msg_seq", None)
-    key = (str(message_id), "" if message_seq is None else str(message_seq))
+    # QQ 可能用不同事件回调重复投递同一消息，按消息 ID 去重而不依赖序号。
+    key = (str(message_id), "")
     state = _seen_group_messages.get(key)
     if state is not None:
         _seen_group_messages.move_to_end(key)
