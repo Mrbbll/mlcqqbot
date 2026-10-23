@@ -1,8 +1,13 @@
 """为当前 botpy 版本补充群聊全量消息事件解析。"""
+from collections import OrderedDict
 from typing import Any
 
 from botpy.connection import ConnectionState
 from botpy.message import GroupMessage
+
+
+_RAW_GROUP_MESSAGE_DATA_LIMIT = 4096
+_raw_group_message_data: OrderedDict[int, dict[str, Any]] = OrderedDict()
 
 
 def install_group_message_parser_compat() -> None:
@@ -46,6 +51,10 @@ def _install_group_message_nickname_compat() -> None:
         """解析群消息后把原始载荷中的昵称补回 author 对象。"""
         payload = data or {}
         original_init(message, api, event_id, payload)
+        _raw_group_message_data[id(message)] = payload
+        _raw_group_message_data.move_to_end(id(message))
+        while len(_raw_group_message_data) > _RAW_GROUP_MESSAGE_DATA_LIMIT:
+            _raw_group_message_data.popitem(last=False)
         author_data = payload.get("author") or {}
         member_data = payload.get("member") or {}
         member_user_data = member_data.get("user") or {}
@@ -61,3 +70,8 @@ def _install_group_message_nickname_compat() -> None:
 
     GroupMessage.__init__ = group_message_init
     GroupMessage._mlc_nickname_compat_installed = True
+
+
+def get_group_message_raw_data(message: GroupMessage) -> dict[str, Any]:
+    """取出构造群消息时保留的原始载荷，用于读取 SDK 未建模的转发字段。"""
+    return _raw_group_message_data.pop(id(message), {})

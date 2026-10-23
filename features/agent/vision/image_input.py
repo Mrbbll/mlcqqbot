@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 from pathlib import Path
 from typing import Any, Iterable
@@ -23,6 +24,9 @@ _IMAGE_TYPES = {
 }
 _DOWNLOAD_TIMEOUT = (5, 30)
 _DOWNLOAD_CHUNK_BYTES = 64 * 1024
+_MAX_FORWARD_SCAN_DEPTH = 8
+_MAX_FORWARD_SCAN_NODES = 1000
+_MAX_EMBEDDED_JSON_BYTES = 1_000_000
 
 
 class _ImageTooLarge(ValueError):
@@ -50,8 +54,157 @@ def _image_size(attachment: Any) -> int | None:
 
 def _normalized_image_type(attachment: Any) -> str:
     """读取并规范化图片 MIME 类型。"""
-    content_type = _attachment_field(attachment, "content_type") or ""
+    content_type = (
+        _attachment_field(attachment, "content_type")
+        or _attachment_field(attachment, "contentType")
+        or ""
+    )
     return str(content_type).split(";", 1)[0].strip().lower()
+
+
+def extract_image_attachments(
+    message: Any,
+    raw_message_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """提取当前消息和可展开转发载荷中的图片附件元数据。"""
+    attachments: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for attachment in getattr(message, "attachments", None) or []:
+        _append_image_attachment(attachment, "消息附件", attachments, seen_urls)
+    if raw_message_data:
+        remaining_nodes = [_MAX_FORWARD_SCAN_NODES]
+        _scan_nested_image_attachments(
+            raw_message_data,
+            "",
+            False,
+            False,
+            0,
+            remaining_nodes,
+            attachments,
+            seen_urls,
+        )
+    return attachments
+
+
+def _append_image_attachment(
+    attachment: Any,
+    source: str,
+    attachments: list[dict[str, Any]],
+    seen_urls: set[str],
+) -> None:
+    """规范化图片附件字段并按 URL 去重。"""
+    content_type = _normalized_image_type(attachment)
+    if not content_type.startswith("image/"):
+        return
+    url = _attachment_field(attachment, "url")
+    normalized_url = str(url or "").strip()
+    if normalized_url and normalized_url in seen_urls:
+        return
+    if normalized_url:
+        seen_urls.add(normalized_url)
+    attachments.append(
+        {
+            "url": normalized_url,
+            "content_type": content_type,
+            "filename": str(_attachment_field(attachment, "filename") or ""),
+            "size": _image_size(attachment),
+            "source": source,
+        }
+    )
+
+
+def _scan_nested_image_attachments(
+    value: Any,
+    parent_key: str,
+    inside_forward: bool,
+    inside_image: bool,
+    depth: int,
+    remaining_nodes: list[int],
+    attachments: list[dict[str, Any]],
+    seen_urls: set[str],
+) -> None:
+    """有界遍历原始事件中的转发节点和 JSON 卡片，收集其中显式标注的图片。"""
+    if depth > _MAX_FORWARD_SCAN_DEPTH or remaining_nodes[0] <= 0:
+        return
+    remaining_nodes[0] -= 1
+    if isinstance(value, dict):
+        content_type = str(value.get("content_type") or value.get("contentType") or "")
+        node_type = str(
+            value.get("type") or value.get("element_type") or value.get("kind") or ""
+        ).casefold()
+        is_image_node = (
+            inside_image
+            or node_type in {"image", "img"}
+            or "image" in parent_key.casefold()
+        )
+        image_url = value.get("url") or value.get("image_url") or value.get("src")
+        if content_type.casefold().startswith("image/") or (
+            inside_forward and is_image_node and image_url
+        ):
+            attachment_data = value
+            if not content_type.casefold().startswith("image/"):
+                attachment_data = {**value, "url": image_url, "content_type": "image/jpeg"}
+            _append_image_attachment(
+                attachment_data,
+                "转发消息图片" if inside_forward else "消息附件",
+                attachments,
+                seen_urls,
+            )
+        for key, nested_value in value.items():
+            normalized_key = str(key).casefold()
+            nested_forward = inside_forward or any(
+                marker in normalized_key
+                for marker in ("forward", "node", "message_chain")
+            )
+            _scan_nested_image_attachments(
+                nested_value,
+                normalized_key,
+                nested_forward,
+                is_image_node or "image" in normalized_key,
+                depth + 1,
+                remaining_nodes,
+                attachments,
+                seen_urls,
+            )
+        return
+    if isinstance(value, (list, tuple)):
+        for nested_value in value:
+            _scan_nested_image_attachments(
+                nested_value,
+                parent_key,
+                inside_forward,
+                inside_image,
+                depth + 1,
+                remaining_nodes,
+                attachments,
+                seen_urls,
+            )
+        return
+    if isinstance(value, str) and inside_forward and inside_image and value.startswith("https://"):
+        _append_image_attachment(
+            {"url": value, "content_type": "image/jpeg"},
+            "转发消息图片",
+            attachments,
+            seen_urls,
+        )
+        return
+    if isinstance(value, str) and value.lstrip().startswith(("{", "[")) and len(
+        value.encode("utf-8", errors="ignore")
+    ) <= _MAX_EMBEDDED_JSON_BYTES:
+        try:
+            nested_data = json.loads(value)
+        except json.JSONDecodeError:
+            return
+        _scan_nested_image_attachments(
+            nested_data,
+            parent_key,
+            inside_forward or "forward" in parent_key.casefold(),
+            inside_image,
+            depth + 1,
+            remaining_nodes,
+            attachments,
+            seen_urls,
+        )
 
 
 def _validate_image_url(value: Any) -> str:
@@ -136,9 +289,9 @@ def _download_images_sync(
     attachments: Iterable[Any],
     authorization: str,
     cache_directory: Path,
-) -> tuple[list[str], list[str]]:
-    """在工作线程中下载图片附件，并返回 data URL 与未处理说明。"""
-    image_data_urls: list[str] = []
+) -> tuple[list[dict[str, str]], list[str]]:
+    """在线程中下载图片，保留来源说明并返回未处理提示。"""
+    image_inputs: list[dict[str, str]] = []
     skipped: list[str] = []
     image_index = 0
     headers = {"Authorization": authorization}
@@ -161,7 +314,13 @@ def _download_images_sync(
         destination = cache_directory / f"image_{image_index}.{extension}"
         try:
             image_url = _validate_image_url(_attachment_field(attachment, "url"))
-            image_data_urls.append(_download_image(image_url, headers, destination))
+            image_data_url = _download_image(image_url, headers, destination)
+            image_inputs.append(
+                {
+                    "data_url": image_data_url,
+                    "description": _image_description(attachment),
+                }
+            )
         except _ImageTooLarge:
             skipped.append(f"{label}大于20MB，已跳过")
         except (OSError, requests.RequestException, ValueError) as exc:
@@ -172,7 +331,24 @@ def _download_images_sync(
             )
             skipped.append(f"{label}下载失败，已跳过")
 
-    return image_data_urls, skipped
+    return image_inputs, skipped
+
+
+def _image_description(attachment: Any) -> str:
+    """为图片输入生成不含下载地址的消息来源说明。"""
+    fields = (
+        ("消息关系", _attachment_field(attachment, "relation")),
+        ("图片来源", _attachment_field(attachment, "source")),
+        ("发送者", _attachment_field(attachment, "user_id")),
+        ("消息", _attachment_field(attachment, "message_id")),
+        ("消息文字", _attachment_field(attachment, "message_content")),
+        ("文件名", _attachment_field(attachment, "filename")),
+    )
+    return "；".join(
+        f"{label}：{str(value).strip()}"
+        for label, value in fields
+        if value is not None and str(value).strip()
+    ) or "来源：群消息图片"
 
 
 async def _qq_media_authorization(api: Any) -> str | None:
@@ -193,7 +369,7 @@ async def download_image_attachments(
     attachments: Iterable[Any],
     api: Any,
     cache_directory: Path,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[dict[str, str]], list[str]]:
     """下载支持的 QQ 图片附件到给定临时目录，并限制每张不超过20MB。"""
     attachment_list = list(attachments or [])
     image_attachments = [

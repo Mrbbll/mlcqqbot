@@ -14,7 +14,10 @@ from botpy.message import C2CMessage, GroupMessage
 from config import QQ_BOT_APPID, QQ_BOT_MENTION_OPENIDS
 from handlers.command_router import route_command
 from features.agent.service import handle_agent
-from features.agent.vision import download_image_attachments
+from features.agent.vision import (
+    download_image_attachments,
+    extract_image_attachments,
+)
 from features.gitee_notifications.monitor import (
     handle_group_message as handle_gitee_group_message,
     start_gitee_monitor,
@@ -27,12 +30,14 @@ from features.interactions.dispatcher import handle_interaction
 from presentation import messages
 from features.commands.text import clean_message
 from external_tools.storage.group_memory import (
+    get_recent_group_image_attachments,
     get_recent_group_messages,
     record_group_message,
 )
 from presentation.markdown import markdown_payload
 from presentation.reply_payload import command_reply_payload
 from external_tools.qq.botpy_compat import install_group_message_parser_compat
+from external_tools.qq.botpy_compat import get_group_message_raw_data
 
 
 install_group_message_parser_compat()
@@ -104,6 +109,7 @@ async def handle_group_message(
     received_at = monotonic()
     is_duplicate, state = _register_group_message(message, is_at_message)
     if is_duplicate:
+        get_group_message_raw_data(message)
         _log.debug(
             "忽略重复群消息 group=%s message=%s seq=%s",
             getattr(message, "group_openid", ""),
@@ -129,11 +135,16 @@ async def handle_group_message(
 
     user_id = _group_user_id(message)
     group_id = getattr(message, "group_openid", "") or ""
+    raw_message_data = get_group_message_raw_data(message)
+    image_attachments = extract_image_attachments(message, raw_message_data)
+    reference_message_id = _group_reference_id(message)
     _log.info(
-        "[群消息] group=%s user=%s at_bot=%s content=%s",
+        "[群消息] group=%s user=%s at_bot=%s has_image=%s image_count=%s content=%s",
         group_id,
         user_id,
         is_at_message,
+        bool(image_attachments),
+        len(image_attachments),
         message.content,
     )
     record_group_message(
@@ -141,6 +152,8 @@ async def handle_group_message(
         user_id,
         clean_message(message.content),
         message_id=str(getattr(message, "id", "") or ""),
+        image_attachments=image_attachments,
+        reference_message_id=reference_message_id,
     )
     handled = await handle_command_message(
         message,
@@ -176,6 +189,17 @@ async def handle_group_message(
 def _group_user_id(message: GroupMessage) -> str:
     """读取群消息发送者的 OpenID，缺失时返回空字符串。"""
     return getattr(getattr(message, "author", None), "member_openid", "") or ""
+
+
+def _group_reference_id(message: GroupMessage) -> str:
+    """读取群消息引用目标的消息 ID。"""
+    reference = getattr(message, "message_reference", None)
+    message_id = (
+        reference.get("message_id")
+        if isinstance(reference, dict)
+        else getattr(reference, "message_id", "")
+    )
+    return str(message_id or "").strip()
 
 
 def _has_at_mention(message: GroupMessage) -> bool:
@@ -284,10 +308,21 @@ async def _agent_reply_text(
     group_context = get_recent_group_messages(
         group_id,
         exclude_message_id=str(getattr(message, "id", "") or ""),
+        referenced_message_ids=[_group_reference_id(message)],
+    )
+    image_attachments = get_recent_group_image_attachments(
+        group_id,
+        current_message_id=str(getattr(message, "id", "") or ""),
+        referenced_message_ids=[_group_reference_id(message)],
+    )
+    current_message_id = str(getattr(message, "id", "") or "")
+    current_image_count = sum(
+        attachment.get("message_id") == current_message_id
+        for attachment in image_attachments
     )
     with TemporaryDirectory(prefix="mlcbot-agent-images-") as cache_directory:
-        image_data_urls, skipped_images = await download_image_attachments(
-            getattr(message, "attachments", None) or [],
+        image_inputs, skipped_images = await download_image_attachments(
+            image_attachments,
             getattr(message, "_api", None),
             Path(cache_directory),
         )
@@ -301,6 +336,8 @@ async def _agent_reply_text(
             question,
             user_id,
             group_context=group_context,
-            image_data_urls=image_data_urls,
+            image_inputs=image_inputs,
+            current_message_has_image=current_image_count > 0,
+            current_message_image_count=current_image_count,
         )
     return messages.agent_reply(response)
