@@ -289,6 +289,7 @@ def _download_images_sync(
     attachments: Iterable[Any],
     authorization: str,
     cache_directory: Path,
+    group_id: str,
 ) -> tuple[list[dict[str, str]], list[str]]:
     """在线程中下载图片，保留来源说明并返回未处理提示。"""
     image_inputs: list[dict[str, str]] = []
@@ -319,6 +320,13 @@ def _download_images_sync(
                 {
                     "data_url": image_data_url,
                     "description": _image_description(attachment),
+                    "source_group_id": group_id,
+                    "source_message_id": str(
+                        _attachment_field(attachment, "message_id") or ""
+                    ),
+                    "source_user_id": str(
+                        _attachment_field(attachment, "user_id") or ""
+                    ),
                 }
             )
         except _ImageTooLarge:
@@ -369,6 +377,8 @@ async def download_image_attachments(
     attachments: Iterable[Any],
     api: Any,
     cache_directory: Path,
+    *,
+    group_id: str = "",
 ) -> tuple[list[dict[str, str]], list[str]]:
     """下载支持的 QQ 图片附件到给定临时目录，并限制每张不超过20MB。"""
     attachment_list = list(attachments or [])
@@ -411,5 +421,6 @@ async def download_image_attachments(
         downloadable,
         authorization,
         cache_directory,
+        group_id,
     )
     return downloaded, skipped + download_skips

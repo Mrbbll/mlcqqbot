@@ -1,0 +1,312 @@
+"""持久化 Agent 表情包图片，并通过 JSON 索引提供分类检索。"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import hashlib
+import json
+import logging
+import os
+import re
+import tempfile
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from config import PROJECT_ROOT
+
+
+_log = logging.getLogger("mlcbot")
+_MAX_IMAGE_BYTES = 20_000_000
+_INDEX_VERSION = 1
+_ALLOWED_MIME_TYPES = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+}
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
+
+
+def _safe_folder_name(value: str, fallback: str) -> str:
+    """将模型提供的分类或图片名限制为安全的短目录名。"""
+    cleaned = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff._ -]+", "_", str(value or ""))
+    cleaned = cleaned.strip(" ._")[:40].strip(" ._")
+    if not cleaned:
+        cleaned = fallback
+    if cleaned.upper() in _WINDOWS_RESERVED_NAMES:
+        cleaned = f"_{cleaned}"
+    return cleaned
+
+
+def _decode_image_data_url(data_url: str) -> tuple[bytes, str, str]:
+    """解析并验证 Agent 图片输入中的 MIME 类型、内容签名和大小。"""
+    header, separator, encoded = str(data_url or "").partition(",")
+    if not separator or not header.startswith("data:") or ";base64" not in header:
+        raise ValueError("图片输入格式无效")
+    mime_type = header[5:].split(";", 1)[0].strip().lower()
+    extension = _ALLOWED_MIME_TYPES.get(mime_type)
+    if extension is None:
+        raise ValueError("图片格式不受支持")
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("图片数据不是有效的 Base64") from exc
+    if not image_bytes or len(image_bytes) > _MAX_IMAGE_BYTES:
+        raise ValueError("图片为空或大于20MB")
+
+    if image_bytes.startswith(b"\xff\xd8\xff"):
+        detected_type = "image/jpeg"
+    elif image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        detected_type = "image/png"
+    elif image_bytes.startswith((b"GIF87a", b"GIF89a")):
+        detected_type = "image/gif"
+    elif image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP":
+        detected_type = "image/webp"
+    else:
+        raise ValueError("图片内容签名无效")
+
+    if mime_type == "image/jpg":
+        mime_type = "image/jpeg"
+    if detected_type != mime_type:
+        raise ValueError("图片 MIME 类型与文件内容不匹配")
+    return image_bytes, detected_type, _ALLOWED_MIME_TYPES[detected_type]
+
+
+def _search_terms(value: str) -> set[str]:
+    """拆分中英文表情描述，生成轻量关键词集合。"""
+    text = str(value or "").casefold()
+    terms = set(re.findall(r"[a-z0-9]+", text))
+    for phrase in re.findall(r"[\u4e00-\u9fff]+", text):
+        if len(phrase) == 1:
+            terms.add(phrase)
+        else:
+            terms.update(phrase[index : index + 2] for index in range(len(phrase) - 1))
+            if len(phrase) <= 8:
+                terms.add(phrase)
+    return terms
+
+
+class EmojiLibrary:
+    """管理同级 emojipic 目录、图片分类和内存索引。"""
+
+    def __init__(self, root: Path | None = None) -> None:
+        """初始化收藏库路径和线程安全索引状态。"""
+        self.root = root or (PROJECT_ROOT.parent / "emojipic")
+        self.index_path = self.root / "index.json"
+        self._lock = threading.RLock()
+        self._items: list[dict[str, Any]] = []
+        self._loaded = False
+        self._load_failed = False
+
+    def load(self) -> int:
+        """创建收藏目录并把索引表加载到内存。"""
+        with self._lock:
+            self.root.mkdir(parents=True, exist_ok=True)
+            if not self.index_path.exists():
+                self._items = []
+                self._write_index(self._items)
+                self._loaded = True
+                self._load_failed = False
+                return 0
+
+            try:
+                data = json.loads(self.index_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                _log.exception("表情包索引表读取失败: path=%s", self.index_path)
+                self._loaded = True
+                self._load_failed = True
+                return 0
+
+            raw_items = data.get("items") if isinstance(data, dict) else None
+            if not isinstance(raw_items, list):
+                _log.error("表情包索引表格式无效: path=%s", self.index_path)
+                self._loaded = True
+                self._load_failed = True
+                return 0
+
+            self._items = [item for item in raw_items if self._valid_index_item(item)]
+            self._loaded = True
+            self._load_failed = False
+            return len(self._items)
+
+    def save(
+        self,
+        data_url: str,
+        category: str,
+        name: str,
+        tags: list[str],
+        source: dict[str, Any],
+    ) -> dict[str, Any]:
+        """将一张图片安全写入分类目录，并原子更新索引表。"""
+        image_bytes, mime_type, extension = _decode_image_data_url(data_url)
+        image_hash = hashlib.sha256(image_bytes).hexdigest()
+        category_name = _safe_folder_name(category, "其他")
+        image_name = _safe_folder_name(name, "表情包")
+        normalized_tags: list[str] = []
+        for tag in tags or []:
+            if not str(tag or "").strip():
+                continue
+            normalized_tag = _safe_folder_name(tag, "")
+            if normalized_tag and normalized_tag not in normalized_tags:
+                normalized_tags.append(normalized_tag)
+            if len(normalized_tags) >= 12:
+                break
+
+        with self._lock:
+            self._ensure_loaded()
+            for item in self._items:
+                if item.get("sha256") == image_hash:
+                    return {**item, "duplicate": True}
+
+            category_dir = self.root / category_name
+            category_dir.mkdir(parents=True, exist_ok=True)
+            relative_path = Path(category_name) / f"{image_name}_{image_hash[:12]}.{extension}"
+            image_path = (self.root / relative_path).resolve()
+            if not image_path.is_relative_to(self.root.resolve()):
+                raise ValueError("收藏图片路径无效")
+
+            record = {
+                "id": image_hash[:16],
+                "sha256": image_hash,
+                "category": category_name,
+                "name": image_name,
+                "tags": normalized_tags,
+                "file": relative_path.as_posix(),
+                "mime_type": mime_type,
+                "size": len(image_bytes),
+                "source": {
+                    "group_id": str(source.get("group_id") or ""),
+                    "message_id": str(source.get("message_id") or ""),
+                    "user_id": str(source.get("user_id") or ""),
+                },
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self._write_image(image_path, image_bytes)
+            updated_items = [*self._items, record]
+            try:
+                self._write_index(updated_items)
+            except OSError:
+                image_path.unlink(missing_ok=True)
+                raise
+            self._items = updated_items
+            return {**record, "duplicate": False, "file_path": str(image_path)}
+
+    def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """按目录、名称和标签匹配收藏图片并返回最相关结果。"""
+        normalized_query = str(query or "").strip()
+        if not normalized_query:
+            return []
+        query_terms = _search_terms(normalized_query)
+        with self._lock:
+            self._ensure_loaded()
+            matches: list[tuple[float, dict[str, Any]]] = []
+            for item in self._items:
+                searchable = " ".join(
+                    [
+                        str(item.get("category") or ""),
+                        str(item.get("name") or ""),
+                        " ".join(str(tag) for tag in item.get("tags", [])),
+                    ]
+                )
+                searchable_terms = _search_terms(searchable)
+                overlap = len(query_terms & searchable_terms)
+                score = overlap / max(len(query_terms), 1)
+                if normalized_query.casefold() in searchable.casefold():
+                    score += 1.0
+                if score > 0:
+                    matches.append((score, item))
+
+            matches.sort(key=lambda match: (-match[0], match[1].get("saved_at", "")))
+            results: list[dict[str, Any]] = []
+            for score, item in matches[: max(1, min(limit, 10))]:
+                image_path = self._resolve_item_path(item)
+                if image_path is not None:
+                    results.append({**item, "file_path": str(image_path), "score": score})
+            return results
+
+    def _ensure_loaded(self) -> None:
+        """确保索引已加载，且不覆盖无法解析的现有索引表。"""
+        if not self._loaded:
+            self.load()
+        if self._load_failed:
+            raise RuntimeError("表情包索引表损坏或不可读，已停止写入以保护收藏数据")
+
+    def _valid_index_item(self, item: Any) -> bool:
+        """检查索引记录字段与本地图片路径是否有效。"""
+        if not isinstance(item, dict):
+            return False
+        required_text_fields = ("id", "sha256", "category", "name", "file", "saved_at")
+        if any(not isinstance(item.get(field), str) for field in required_text_fields):
+            return False
+        tags = item.get("tags")
+        if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+            return False
+        return self._resolve_item_path(item) is not None
+
+    def _resolve_item_path(self, item: dict[str, Any]) -> Path | None:
+        """解析索引中的相对路径并拒绝越出 emojipic 根目录的路径。"""
+        try:
+            candidate = (self.root / str(item.get("file") or "")).resolve(strict=True)
+            if candidate.is_file() and candidate.is_relative_to(self.root.resolve()):
+                return candidate
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return None
+
+    def _write_image(self, destination: Path, image_bytes: bytes) -> None:
+        """用同目录临时文件写入图片，避免留下不完整收藏文件。"""
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                prefix=".emojipic-",
+                suffix=destination.suffix,
+                dir=destination.parent,
+                delete=False,
+            ) as image_file:
+                temporary_path = Path(image_file.name)
+                image_file.write(image_bytes)
+            os.replace(temporary_path, destination)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+    def _write_index(self, items: list[dict[str, Any]]) -> None:
+        """原子写入 JSON 索引表，降低程序中断导致索引损坏的概率。"""
+        payload = json.dumps(
+            {"version": _INDEX_VERSION, "items": items},
+            ensure_ascii=False,
+            indent=2,
+        )
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                prefix=".index-",
+                suffix=".tmp",
+                dir=self.root,
+                delete=False,
+            ) as index_file:
+                temporary_path = Path(index_file.name)
+                index_file.write(payload)
+                index_file.flush()
+                os.fsync(index_file.fileno())
+            os.replace(temporary_path, self.index_path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+
+
+__all__ = ["EmojiLibrary"]

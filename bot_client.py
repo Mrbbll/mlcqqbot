@@ -13,7 +13,8 @@ from botpy.message import C2CMessage, GroupMessage
 
 from config import QQ_BOT_APPID, QQ_BOT_MENTION_OPENIDS
 from handlers.command_router import route_command
-from features.agent.service import handle_agent
+from features.agent.service import AgentReply, handle_agent
+from features.agent.emojipic import load_emoji_library
 from features.agent.vision import (
     download_image_attachments,
     extract_image_attachments,
@@ -38,6 +39,7 @@ from presentation.markdown import markdown_payload
 from presentation.reply_payload import command_reply_payload
 from external_tools.qq.botpy_compat import install_group_message_parser_compat
 from external_tools.qq.botpy_compat import get_group_message_raw_data
+from external_tools.qq.media_sender import send_group_image
 
 
 install_group_message_parser_compat()
@@ -57,6 +59,11 @@ class MLCBot(Client):
     async def on_ready(self):
         """记录机器人上线状态并启动后台监听和 OneBot WebSocket 服务。"""
         _log.info("机器人已上线！AppID: %s", QQ_BOT_APPID)
+        try:
+            emoji_count = load_emoji_library()
+            _log.info("表情包收藏库已加载: count=%s", emoji_count)
+        except Exception:
+            _log.exception("表情包收藏库加载失败")
         await start_gitee_monitor()
         await start_onebot_ws_server()
 
@@ -252,6 +259,7 @@ async def handle_command_message(
 ) -> bool:
     """执行文本命令或 agent 兜底，并返回是否已经发送回复。"""
     try:
+        emoji_image_path = None
         if force_agent:
             reply_text = await _agent_reply_text(message, user_id, group_id)
         else:
@@ -270,19 +278,47 @@ async def handle_command_message(
                 )
                 if should_auto_reply:
                     reply_text = await _agent_reply_text(message, user_id, group_id)
-        if not reply_text:
+        if isinstance(reply_text, AgentReply):
+            emoji_image_path = reply_text.emoji_image_path
+            reply_text = reply_text.text
+        if not reply_text and emoji_image_path is None:
             return False
 
-        payload = command_reply_payload(
-            message.content or "",
-            reply_text,
-            user_id,
-            is_group=is_group,
-        )
-        if "keyboard" in payload:
-            scope = "group=%s" % group_id if is_group else "c2c"
-            _log.info("[内联键盘] %s user=%s", scope, user_id)
-        await message.reply(**payload)
+        if reply_text:
+            payload = command_reply_payload(
+                message.content or "",
+                reply_text,
+                user_id,
+                is_group=is_group,
+            )
+            if "keyboard" in payload:
+                scope = "group=%s" % group_id if is_group else "c2c"
+                _log.info("[内联键盘] %s user=%s", scope, user_id)
+            await message.reply(**payload)
+
+        if emoji_image_path is not None:
+            if not is_group or not group_id:
+                _log.warning("跳过表情包发送：当前消息没有群聊上下文")
+            else:
+                try:
+                    await send_group_image(
+                        api or getattr(message, "_api", None),
+                        group_id,
+                        emoji_image_path,
+                        str(getattr(message, "id", "") or ""),
+                        message_sequence=2 if reply_text else 1,
+                    )
+                    _log.info(
+                        "Agent 表情包已发送: group=%s message=%s",
+                        group_id,
+                        getattr(message, "id", ""),
+                    )
+                except Exception:
+                    _log.exception(
+                        "Agent 表情包发送失败: group=%s message=%s",
+                        group_id,
+                        getattr(message, "id", ""),
+                    )
         return True
     except Exception:
         _log.error("处理消息异常: %s", traceback.format_exc())
@@ -294,7 +330,7 @@ async def _agent_reply_text(
     message: GroupMessage | C2CMessage,
     user_id: str,
     group_id: str,
-) -> str:
+) -> str | AgentReply:
     """准备当前问题和近期群聊上下文，调用 agent 生成回复。"""
     _log.info(
         "[Agent 自动回复请求] group=%s user=%s message=%s",
@@ -325,6 +361,7 @@ async def _agent_reply_text(
             image_attachments,
             getattr(message, "_api", None),
             Path(cache_directory),
+            group_id=group_id,
         )
         if skipped_images:
             question = (
@@ -335,9 +372,15 @@ async def _agent_reply_text(
         response = await handle_agent(
             question,
             user_id,
+            group_id=group_id,
             group_context=group_context,
             image_inputs=image_inputs,
             current_message_has_image=current_image_count > 0,
             current_message_image_count=current_image_count,
+        )
+    if isinstance(response, AgentReply):
+        return AgentReply(
+            messages.agent_reply(response.text),
+            response.emoji_image_path,
         )
     return messages.agent_reply(response)
