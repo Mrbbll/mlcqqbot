@@ -95,6 +95,8 @@ conda run -n mlcqqbot python main.py
 ```env
 QQ_BOT_APPID=102090462
 QQ_BOT_SECRET=你的AppSecret
+# 全量群消息模式下，用消息里 <@...> 的机器人 OpenID 识别 @；多个值用英文逗号分隔
+QQ_BOT_MENTION_OPENIDS=8B9CC2FBDA3F841B53716151614F7A13
 SUPERUSERS=QQ号1,QQ号2
 # 社群邀请链接
 OOPZ_INVITE_URL=https://oopz.cn/i/lA2eHI

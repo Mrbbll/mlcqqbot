@@ -37,6 +37,9 @@ def get_env_int(
     return parsed
 
 
+# 机器人在群消息 <@...> 中的 OpenID，多个值用英文逗号分隔。
+QQ_BOT_MENTION_OPENIDS = get_env_list("QQ_BOT_MENTION_OPENIDS")
+
 # ==================== 超级用户 ====================
 SUPERUSERS = get_env_list("SUPERUSERS")
 

@@ -4,14 +4,17 @@ import random
 import re
 import traceback
 from collections import OrderedDict
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import monotonic
 
 from botpy import Client
 from botpy.message import C2CMessage, GroupMessage
 
-from config import QQ_BOT_APPID
+from config import QQ_BOT_APPID, QQ_BOT_MENTION_OPENIDS
 from handlers.command_router import route_command
 from features.agent.service import handle_agent
+from features.agent.vision import download_image_attachments
 from features.gitee_notifications.monitor import (
     handle_group_message as handle_gitee_group_message,
     start_gitee_monitor,
@@ -62,6 +65,12 @@ class MLCBot(Client):
 
     async def on_group_at_message_create(self, message: GroupMessage):
         """处理群聊中 @机器人的消息。"""
+        _log.info(
+            "[收到群@机器人事件] group=%s user=%s message=%s",
+            getattr(message, "group_openid", ""),
+            _group_user_id(message),
+            getattr(message, "id", ""),
+        )
         await handle_group_message(
             message,
             api=getattr(self, "api", None),
@@ -69,7 +78,7 @@ class MLCBot(Client):
         )
 
     async def on_group_message_create(self, message: GroupMessage):
-        """处理开启全量消息模式后收到的群聊消息。"""
+        """处理全量群消息，并按配置的机器人 OpenID 识别 @。"""
         await handle_group_message(
             message,
             api=getattr(self, "api", None),
@@ -107,6 +116,7 @@ async def handle_group_message(
                 _group_user_id(message),
                 is_group=True,
                 group_id=getattr(message, "group_openid", "") or "",
+                api=api,
                 force_agent=True,
             )
             state["status"] = "handled"
@@ -119,7 +129,13 @@ async def handle_group_message(
 
     user_id = _group_user_id(message)
     group_id = getattr(message, "group_openid", "") or ""
-    _log.info("[群消息] group=%s user=%s content=%s", group_id, user_id, message.content)
+    _log.info(
+        "[群消息] group=%s user=%s at_bot=%s content=%s",
+        group_id,
+        user_id,
+        is_at_message,
+        message.content,
+    )
     record_group_message(
         group_id,
         user_id,
@@ -141,6 +157,7 @@ async def handle_group_message(
                 user_id,
                 is_group=True,
                 group_id=group_id,
+                api=api,
                 force_agent=True,
             )
             state["status"] = "handled"
@@ -162,12 +179,9 @@ def _group_user_id(message: GroupMessage) -> str:
 
 
 def _has_at_mention(message: GroupMessage) -> bool:
-    """检查全量消息是否明确 @ 了当前机器人。"""
-    content = getattr(message, "content", "") or ""
-    bot_id = str(QQ_BOT_APPID or "").strip()
-    if not bot_id:
-        return False
-    return bot_id in _AT_MENTION_PATTERN.findall(content)
+    """匹配消息中的机器人群内 OpenID，避免把提及其他成员当成提及机器人。"""
+    mention_ids = _AT_MENTION_PATTERN.findall(getattr(message, "content", "") or "")
+    return any(mention_id in QQ_BOT_MENTION_OPENIDS for mention_id in mention_ids)
 
 
 def _register_group_message(
@@ -271,5 +285,22 @@ async def _agent_reply_text(
         group_id,
         exclude_message_id=str(getattr(message, "id", "") or ""),
     )
-    response = await handle_agent(question, user_id, group_context=group_context)
+    with TemporaryDirectory(prefix="mlcbot-agent-images-") as cache_directory:
+        image_data_urls, skipped_images = await download_image_attachments(
+            getattr(message, "attachments", None) or [],
+            getattr(message, "_api", None),
+            Path(cache_directory),
+        )
+        if skipped_images:
+            question = (
+                f"{question}\n\n"
+                "系统提示：本条消息附带的部分图片未能提供给模型（"
+                f"{'；'.join(skipped_images)}），请勿猜测未读取图片的内容。"
+            )
+        response = await handle_agent(
+            question,
+            user_id,
+            group_context=group_context,
+            image_data_urls=image_data_urls,
+        )
     return messages.agent_reply(response)
