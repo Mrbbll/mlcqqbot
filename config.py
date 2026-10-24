@@ -2,6 +2,7 @@
 项目配置文件
 从 NoneBot 项目移植的 MCSM 面板和服务器配置
 """
+import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -75,6 +76,26 @@ GITEE_TOKEN = os.getenv("GITEE_TOKEN", "").strip()
 GITEE_POLL_INTERVAL = get_env_int("GITEE_POLL_INTERVAL", 60, 5)
 GITEE_REQUEST_TIMEOUT = get_env_int("GITEE_REQUEST_TIMEOUT", 20, 1, 120)
 GITEE_MAX_COMMITS = get_env_int("GITEE_MAX_COMMITS", 10, 1, 20)
+
+# ==================== Bilibili 直播通知 ====================
+# 使用直播间号；兼容旧项目误命名的 BILIBILI_UIDS（内容同样是直播间号）。
+def get_bilibili_room_ids() -> list[str]:
+    """读取逗号分隔的直播间号，并兼容旧 NoneBot 配置的 JSON 数组。"""
+    name = "BILIBILI_ROOM_IDS" if os.getenv("BILIBILI_ROOM_IDS", "").strip() else "BILIBILI_UIDS"
+    value = os.getenv(name, "").strip()
+    if value.startswith("["):
+        try:
+            rooms = json.loads(value)
+        except ValueError:
+            return []
+        return [str(room).strip() for room in rooms] if isinstance(rooms, list) else []
+    return get_env_list(name)
+
+
+BILIBILI_ROOM_IDS = get_bilibili_room_ids()
+BILIBILI_NOTIFY_GROUPS = get_env_list("BILIBILI_NOTIFY_GROUPS")
+BILIBILI_POLL_INTERVAL = get_env_int("BILIBILI_POLL_INTERVAL", 30, 5)
+BILIBILI_REQUEST_TIMEOUT = get_env_int("BILIBILI_REQUEST_TIMEOUT", 20, 1, 120)
 
 # ==================== 群聊投票 ====================
 PROJECT_ROOT = Path(__file__).resolve().parent

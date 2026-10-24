@@ -19,6 +19,10 @@ from features.agent.vision import (
     download_image_attachments,
     extract_image_attachments,
 )
+from features.bilibili_notifications.monitor import (
+    handle_group_message as handle_bilibili_group_message,
+    start_bilibili_monitor,
+)
 from features.gitee_notifications.monitor import (
     handle_group_message as handle_gitee_group_message,
     start_gitee_monitor,
@@ -65,6 +69,7 @@ class MLCBot(Client):
         except Exception:
             _log.exception("表情包收藏库加载失败")
         await start_gitee_monitor()
+        await start_bilibili_monitor()
         await start_onebot_ws_server()
 
     async def on_group_add_robot(self, event):
@@ -191,6 +196,10 @@ async def handle_group_message(
         )
     except Exception:
         _log.exception("处理 Gitee 提交通知队列失败")
+    try:
+        await handle_bilibili_group_message(message)
+    except Exception:
+        _log.exception("处理 Bilibili 直播通知队列失败")
 
 
 def _group_user_id(message: GroupMessage) -> str:

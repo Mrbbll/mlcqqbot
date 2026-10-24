@@ -39,6 +39,8 @@ qqmlcbot/
 │   ├── agent/            # AI 对话与服务器工具
 │   ├── commands/         # 命令文本清洗和标准化
 │   ├── fishing/          # 钓鱼命令、会话和按钮处理
+│   ├── bilibili_notifications/ # Bilibili 开播、下播被动回复通知
+│   ├── passive_notifications/ # 共享近期消息与回复序号
 │   ├── gitee_notifications/ # Gitee Push 轮询与群通知
 │   ├── interactions/     # 跨功能按钮回调总分发
 │   ├── mcsm_control/     # MCSM 实例控制命令
@@ -124,6 +126,11 @@ GITEE_TOKEN=
 GITEE_POLL_INTERVAL=60
 GITEE_REQUEST_TIMEOUT=20
 GITEE_MAX_COMMITS=10
+# Bilibili 直播通知；填直播间号（不是用户 UID）和本项目 QQ 群 OpenID
+BILIBILI_ROOM_IDS=31531145,30646779
+BILIBILI_NOTIFY_GROUPS=openid_group_001
+BILIBILI_POLL_INTERVAL=30
+BILIBILI_REQUEST_TIMEOUT=20
 # OneBot v11 正向 WebSocket 服务端；MCDR ImAPI 的 ws_client 连接此地址
 ONEBOT_WS_HOST=127.0.0.1
 ONEBOT_WS_PORT=8081
@@ -134,6 +141,8 @@ ONEBOT_WS_HEARTBEAT=30
 MCDR ImAPI 配置为 `ws_client`，连接地址填写 `ws://127.0.0.1:8081`。如需令牌校验，在本项目的 `ONEBOT_WS_ACCESS_TOKEN` 和 ImAPI 的 `access_token` 中设置相同值；若 MCDR 与机器人不在同一主机，将 `ONEBOT_WS_HOST` 改为可被 MCDR 访问的监听地址，并调整 `ws_url`，同时设置访问令牌。机器人会转发所有收到的群消息；QQ 开放平台仍决定事件订阅范围，普通群消息需有 `GROUP_MESSAGE_CREATE` 全量消息事件权限。昵称按参考实现从消息发送者和 `@` 对象的 `username` 累积映射；事件若缺少昵称，会暂用成员 OpenID。OneBot 的 `group_id`、`user_id` 是由 BotPy OpenID 生成的稳定数字别名，原始 OpenID 保存在附加字段中。
 
 Gitee 监听仅处理配置用户本人发起的公开 Push。`GITEE_NOTIFY_GROUPS` 填 QQ 群 OpenID；通知会回复该群最近五分钟内收到的消息。没有可用消息时通知会暂存，等群内有新消息后再发送。单条群消息最多作为 5 条被动回复的锚点；达到上限后队列会等待新的群消息。队列保存在进程内存中，重启后清空。每个群每分钟最多发送一条提交通知；冷却期间新发现的活动会跳过。`GITEE_TOKEN` 和 `GITEE_POLL_INTERVAL` 可选，轮询间隔最小为 5 秒。
+
+Bilibili 监听保留旧项目的开播、下播通知：默认每 30 秒检查一次，首次成功查询只建立状态基线，不补发通知；轮播按未开播处理。接口失败不会被当作下播。直播状态变化后，仅以被动回复方式发送到 `BILIBILI_NOTIFY_GROUPS` 中的群；没有五分钟内有效消息或回复额度耗尽时暂存，等收到新消息后继续。每群每分钟最多尝试发送一条直播通知，失败后保留并重试；队列只存在内存中，重启后清空。Bilibili 和 Gitee 共用消息回复序号及单条消息最多 5 次的额度，各自计算通知冷却。`BILIBILI_ROOM_IDS` 支持英文逗号分隔多个直播间号，也兼容旧变量名 `BILIBILI_UIDS`；旧项目的数字 QQ 群号不能直接作为本项目的群 OpenID 使用。未配置直播间或目标群时不启动监听。
 
 回复目标只从机器人实际收到的群消息中选择。当前公域机器人默认只收到 @机器人的群消息；开启全量消息权限后，普通群消息也可作为回复目标。
 
