@@ -202,16 +202,21 @@ class EmojiLibrary:
             self._items = updated_items
             return {**record, "duplicate": False, "file_path": str(image_path)}
 
-    def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
-        """按目录、名称和标签匹配收藏图片并返回最相关结果。"""
+    def search(self, query: str, limit: int = 5, *, gif_only: bool = False,
+               exclude_id: str = "") -> list[dict[str, Any]]:
+        """按关键词和格式检索；仅限 GIF 或排除旧图时允许空关键词。"""
         normalized_query = str(query or "").strip()
-        if not normalized_query:
+        if not normalized_query and not gif_only and not exclude_id:
             return []
         query_terms = _search_terms(normalized_query)
         with self._lock:
             self._ensure_loaded()
             matches: list[tuple[float, dict[str, Any]]] = []
             for item in self._items:
+                if exclude_id and item.get("id") == exclude_id:
+                    continue
+                if gif_only and Path(str(item.get("file") or "")).suffix.casefold() != ".gif":
+                    continue
                 searchable = " ".join(
                     [
                         str(item.get("category") or ""),
@@ -222,7 +227,7 @@ class EmojiLibrary:
                 searchable_terms = _search_terms(searchable)
                 overlap = len(query_terms & searchable_terms)
                 score = overlap / max(len(query_terms), 1)
-                if normalized_query.casefold() in searchable.casefold():
+                if not normalized_query or normalized_query.casefold() in searchable.casefold():
                     score += 1.0
                 if score > 0:
                     matches.append((score, item))
@@ -234,6 +239,41 @@ class EmojiLibrary:
                 if image_path is not None:
                     results.append({**item, "file_path": str(image_path), "score": score})
             return results
+
+    def list_images(self, page: int = 1, page_size: int = 10, *,
+                    gif_only: bool = False, category: str = "") -> dict[str, Any]:
+        """分页浏览可用收藏，先按格式与分类过滤，再计算总数和分页。"""
+        if type(page) is not int or page < 1 or type(page_size) is not int or not 1 <= page_size <= 20:
+            raise ValueError("页码必须为正整数，每页数量必须在1到20之间")
+        with self._lock:
+            self._ensure_loaded()
+            items = []
+            for item in self._items:
+                if category and item.get("category") != category:
+                    continue
+                if gif_only and Path(str(item.get("file") or "")).suffix.casefold() != ".gif":
+                    continue
+                if self._resolve_item_path(item) is not None:
+                    items.append(item)
+            items.sort(key=lambda item: (item.get("saved_at", ""), item["id"]))
+            total = len(items)
+            start = (page - 1) * page_size
+            return {
+                "page": page, "page_size": page_size, "total": total,
+                "total_pages": (total + page_size - 1) // page_size,
+                "has_more": start + page_size < total,
+                "items": [dict(item) for item in items[start:start + page_size]],
+            }
+
+    def get_image(self, image_id: str) -> dict[str, Any] | None:
+        """只按索引中的完整 ID 获取图片，拒绝路径输入和不存在的本地文件。"""
+        with self._lock:
+            self._ensure_loaded()
+            for item in self._items:
+                if item.get("id") == image_id:
+                    image_path = self._resolve_item_path(item)
+                    return {**item, "file_path": str(image_path)} if image_path is not None else None
+        return None
 
     def _ensure_loaded(self) -> None:
         """确保索引已加载，且不覆盖无法解析的现有索引表。"""

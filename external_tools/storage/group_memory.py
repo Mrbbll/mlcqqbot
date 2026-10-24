@@ -24,6 +24,8 @@ class _GroupMessage:
     has_image: bool
     image_attachments: tuple[dict[str, Any], ...]
     reference_message_id: str
+    role: str = "user"
+    emoji: dict[str, Any] | None = None
 
 
 _messages_by_group: OrderedDict[str, deque[_GroupMessage]] = OrderedDict()
@@ -37,8 +39,10 @@ def record_group_message(
     message_id: str = "",
     image_attachments: Iterable[dict[str, Any]] = (),
     reference_message_id: str = "",
+    role: str = "user",
+    emoji: dict[str, Any] | None = None,
 ) -> None:
-    """保存一条入站群消息，并清理已过期记录。"""
+    """保存入站消息或已成功发送的机器人回复，并清理过期记录。"""
     normalized_group_id = (group_id or "").strip()
     normalized_content = (content or "").strip()
     normalized_images = tuple(
@@ -69,9 +73,11 @@ def record_group_message(
             message_id=message_id,
             user_id=(user_id or "未知用户").strip(),
             content=normalized_content,
-            has_image=bool(normalized_images),
+            has_image=bool(normalized_images or emoji),
             image_attachments=normalized_images,
             reference_message_id=normalized_reference_id,
+            role=role,
+            emoji=dict(emoji) if emoji else None,
         )
     )
     while len(_messages_by_group) > _MAX_TRACKED_GROUPS:
@@ -128,10 +134,12 @@ def get_recent_group_messages(
         {
             "message_id": message.message_id,
             "user_id": message.user_id,
+            "role": message.role,
             "content": message.content,
             "has_image": message.has_image,
-            "image_count": len(message.image_attachments),
+            "image_count": len(message.image_attachments) + int(bool(message.emoji)),
             "reference_message_id": message.reference_message_id,
+            "emoji": dict(message.emoji) if message.emoji else None,
         }
         for message in recent_messages
     ]

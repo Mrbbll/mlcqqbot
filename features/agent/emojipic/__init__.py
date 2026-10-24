@@ -24,9 +24,22 @@ def save_emoji_image(
     return _LIBRARY.save(data_url, category, name, tags, source)
 
 
-def search_emoji_images(query: str, limit: int = 5) -> list[dict[str, Any]]:
-    """按表情含义和标签搜索收藏库。"""
-    return _LIBRARY.search(query, limit)
+def search_emoji_images(query: str, limit: int = 5, *, gif_only: bool = False,
+                        exclude_id: str = "") -> list[dict[str, Any]]:
+    """按表情含义和格式检索，可排除刚发送的表情包。"""
+    return _LIBRARY.search(query, limit, gif_only=gif_only, exclude_id=exclude_id)
 
 
-__all__ = ["load_emoji_library", "save_emoji_image", "search_emoji_images"]
+def list_emoji_images(page: int = 1, page_size: int = 10, *,
+                      gif_only: bool = False, category: str = "") -> dict[str, Any]:
+    """分页浏览收藏库，支持 GIF 和分类筛选。"""
+    return _LIBRARY.list_images(page, page_size, gif_only=gif_only, category=category)
+
+
+def get_emoji_image(image_id: str) -> dict[str, Any] | None:
+    """按收藏 ID 获取图片及其安全解析后的发送路径。"""
+    return _LIBRARY.get_image(image_id)
+
+
+__all__ = ["load_emoji_library", "save_emoji_image", "search_emoji_images",
+           "list_emoji_images", "get_emoji_image"]

@@ -15,6 +15,7 @@ from config import QQ_BOT_APPID, QQ_BOT_MENTION_OPENIDS
 from handlers.command_router import route_command
 from features.agent.service import AgentReply, handle_agent
 from features.agent.emojipic import load_emoji_library
+from features.agent.reply_memory import record_bot_reply
 from features.agent.vision import (
     download_image_attachments,
     extract_image_attachments,
@@ -269,6 +270,7 @@ async def handle_command_message(
     """执行文本命令或 agent 兜底，并返回是否已经发送回复。"""
     try:
         emoji_image_path = None
+        emoji_metadata = None
         if force_agent:
             reply_text = await _agent_reply_text(message, user_id, group_id)
         else:
@@ -289,6 +291,7 @@ async def handle_command_message(
                     reply_text = await _agent_reply_text(message, user_id, group_id)
         if isinstance(reply_text, AgentReply):
             emoji_image_path = reply_text.emoji_image_path
+            emoji_metadata = reply_text.emoji_metadata
             reply_text = reply_text.text
         if not reply_text and emoji_image_path is None:
             return False
@@ -303,20 +306,23 @@ async def handle_command_message(
             if "keyboard" in payload:
                 scope = "group=%s" % group_id if is_group else "c2c"
                 _log.info("[内联键盘] %s user=%s", scope, user_id)
-            await message.reply(**payload)
+            reply_result = await message.reply(**payload)
+            if is_group and group_id:
+                record_bot_reply(group_id, reply_text, reply_result)
 
         if emoji_image_path is not None:
             if not is_group or not group_id:
                 _log.warning("跳过表情包发送：当前消息没有群聊上下文")
             else:
                 try:
-                    await send_group_image(
+                    image_result = await send_group_image(
                         api or getattr(message, "_api", None),
                         group_id,
                         emoji_image_path,
                         str(getattr(message, "id", "") or ""),
                         message_sequence=2 if reply_text else 1,
                     )
+                    record_bot_reply(group_id, "[已发送表情包]", image_result, emoji=emoji_metadata)
                     _log.info(
                         "Agent 表情包已发送: group=%s message=%s",
                         group_id,
@@ -391,5 +397,6 @@ async def _agent_reply_text(
         return AgentReply(
             messages.agent_reply(response.text),
             response.emoji_image_path,
+            response.emoji_metadata,
         )
     return messages.agent_reply(response)
