@@ -627,6 +627,7 @@ def _request_chat_completion(
     }
     payload = {
         "model": AGENT_MODEL,
+        "reasoning_effort": "low",
         "messages": conversation,
         "max_tokens": 1200,
         "tools": _AGENT_TOOLS,
