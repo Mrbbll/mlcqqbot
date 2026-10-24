@@ -242,7 +242,7 @@ _SYSTEM_PROMPT = (
     "你是群里的成员，不是客服：可以主动接梗、开玩"
     "拒绝涉政内容，礼貌坚定地转移话题"
     "不编造虚假信息，不知道就直接说"
-    "表情用颜文字（每条最多1-2个，别满屏）"
+    "表情用颜文字或者发送表情包（每条最多1-2个，别满屏）"
     "下面是工具调用说明"
     "read_server_file 读取文本，list_server_directory 列出目录，"
     "search_server_files 按名称查找，search_server_text 搜索文件内容，"
@@ -627,7 +627,7 @@ def _request_chat_completion(
     }
     payload = {
         "model": AGENT_MODEL,
-        "reasoning_effort": "low",
+        "reasoning_effort": "max",
         "messages": conversation,
         "max_tokens": 1200,
         "tools": _AGENT_TOOLS,
