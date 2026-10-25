@@ -13,5 +13,5 @@ mlcbot.log*
 *.bin
 *.html
 data/*.sqlite3*
-tests
 .claude
+tests/

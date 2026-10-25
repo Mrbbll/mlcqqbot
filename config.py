@@ -48,6 +48,11 @@ SUPERUSERS = get_env_list("SUPERUSERS")
 AGENT_API_URL = os.getenv("AGENT_API_URL", "").strip()
 AGENT_API_KEY = os.getenv("AGENT_API_KEY", "").strip()
 AGENT_MODEL = os.getenv("AGENT_MODEL", "").strip()
+AGENT_MAX_STEPS = get_env_int("AGENT_MAX_STEPS", 30, 1, 300)
+AGENT_MAX_TOOL_CALLS = get_env_int("AGENT_MAX_TOOL_CALLS", 30, 1, 1000)
+AGENT_TOOL_TIMEOUT_SECONDS = get_env_int("AGENT_TOOL_TIMEOUT_SECONDS", 120, 1, 600)
+AGENT_BASH_PATH = os.getenv("AGENT_BASH_PATH", "bash").strip() or "bash"
+AGENT_FILE_SEARCH_ROOTS = get_env_list("AGENT_FILE_SEARCH_ROOTS")
 AGENT_SERVER_CONTEXT = os.getenv("AGENT_SERVER_CONTEXT", "").strip()[:4000]
 AGENT_LOG_MODEL_RESPONSE = os.getenv("AGENT_LOG_MODEL_RESPONSE", "").strip().casefold() in {
     "1",
