@@ -14,6 +14,8 @@ from botpy.message import C2CMessage, GroupMessage
 from config import QQ_BOT_APPID, QQ_BOT_MENTION_OPENIDS
 from handlers.command_router import route_command
 from features.agent.service import AgentReply, handle_agent
+from features.agent.file_input import extract_file_attachments, read_file_attachments
+from external_tools.storage.group_memory import get_recent_group_file_attachments
 from features.agent.emojipic import load_emoji_library
 from features.agent.reply_memory import record_bot_reply
 from features.agent.vision import (
@@ -42,9 +44,13 @@ from external_tools.storage.group_memory import (
 )
 from presentation.markdown import markdown_payload
 from presentation.reply_payload import command_reply_payload
-from external_tools.qq.botpy_compat import install_group_message_parser_compat
-from external_tools.qq.botpy_compat import get_group_message_raw_data
+from external_tools.qq.botpy_compat import (
+    get_group_message_indices,
+    get_group_message_raw_data,
+    install_group_message_parser_compat,
+)
 from external_tools.qq.media_sender import send_group_image
+from features.file_sender import send_group_file
 
 
 install_group_message_parser_compat()
@@ -53,7 +59,7 @@ install_group_message_parser_compat()
 _log = logging.getLogger("mlcbot")
 _ERROR_REPLY = markdown_payload(messages.PROCESSING_ERROR)
 _GROUP_MESSAGE_DEDUP_LIMIT = 4096
-_AGENT_AUTO_REPLY_PROBABILITY = 0.05
+_AGENT_AUTO_REPLY_PROBABILITY = 0.01
 _AT_MENTION_PATTERN = re.compile(r"<@!?(\w+)>")
 _seen_group_messages: OrderedDict[tuple[str, str], dict[str, object]] = OrderedDict()
 
@@ -150,12 +156,48 @@ async def handle_group_message(
     group_id = getattr(message, "group_openid", "") or ""
     raw_message_data = get_group_message_raw_data(message)
     image_attachments = extract_image_attachments(message, raw_message_data)
-    reference_message_id = _group_reference_id(message)
+    message_index, reference_index = get_group_message_indices(raw_message_data)
+    reference_message_id = reference_index or _group_reference_id(message)
+    raw_message_type = str(
+        raw_message_data.get("message_type")
+        or raw_message_data.get("messageType")
+        or ""
+    )
+    message_elements = (
+        raw_message_data.get("msg_elements")
+        or raw_message_data.get("msgElements")
+        or []
+    )
+    if not isinstance(message_elements, (list, tuple)):
+        message_elements = []
+    quote_elements = [
+        element
+        for element in message_elements
+        if isinstance(element, dict)
+        and str(
+            element.get("message_type")
+            or element.get("messageType")
+            or raw_message_type
+        ) == "103"
+    ]
+    quote_attachment_count = sum(
+        len(element.get("attachments") or [])
+        for element in quote_elements
+        if isinstance(element.get("attachments") or [], (list, tuple))
+    )
     _log.info(
-        "[群消息] group=%s user=%s at_bot=%s has_image=%s image_count=%s content=%s",
+        "[群消息] group=%s user=%s at_bot=%s message_type=%s has_ref_marker=%s "
+        "has_ref_idx=%s msg_elements=%s quote_elements=%s quote_attachments=%s "
+        "has_image=%s image_count=%s content=%s",
         group_id,
         user_id,
         is_at_message,
+        raw_message_type or "unknown",
+        bool(reference_message_id or raw_message_type == "103" or quote_elements),
+        bool(reference_index),
+        len(message_elements),
+        len(quote_elements),
+        quote_attachment_count,
         bool(image_attachments),
         len(image_attachments),
         message.content,
@@ -166,7 +208,9 @@ async def handle_group_message(
         clean_message(message.content),
         message_id=str(getattr(message, "id", "") or ""),
         image_attachments=image_attachments,
+        file_attachments=extract_file_attachments(message, raw_message_data),
         reference_message_id=reference_message_id,
+        message_index=message_index,
     )
     handled = await handle_command_message(
         message,
@@ -271,6 +315,7 @@ async def handle_command_message(
     try:
         emoji_image_path = None
         emoji_metadata = None
+        file_paths = ()
         if force_agent:
             reply_text = await _agent_reply_text(message, user_id, group_id)
         else:
@@ -292,8 +337,9 @@ async def handle_command_message(
         if isinstance(reply_text, AgentReply):
             emoji_image_path = reply_text.emoji_image_path
             emoji_metadata = reply_text.emoji_metadata
+            file_paths = reply_text.file_paths
             reply_text = reply_text.text
-        if not reply_text and emoji_image_path is None:
+        if not reply_text and emoji_image_path is None and not file_paths:
             return False
 
         if reply_text:
@@ -334,6 +380,23 @@ async def handle_command_message(
                         group_id,
                         getattr(message, "id", ""),
                     )
+        if file_paths:
+            # 为文字、表情包及文件使用不同序号，上传不占用回复序号。
+            sequence = 1 + bool(reply_text) + (emoji_image_path is not None)
+            for file_path in file_paths[:1]:
+                try:
+                    result = await send_group_file(
+                        api or getattr(message, "_api", None), group_id, file_path,
+                        str(getattr(message, "id", "") or ""), message_sequence=sequence,
+                    )
+                    if is_group and group_id:
+                        record_bot_reply(group_id, f"[已发送文件] {file_path.name}", result)
+                except Exception:
+                    _log.exception("Agent 文件发送失败: group=%s", group_id)
+                    failure = "文件发送失败，尚未确认送达；请检查 QQ 普通文件发送权限、文件大小及服务日志。"
+                    failure_result = await message.reply(content=failure, msg_seq=sequence + 1)
+                    if is_group and group_id:
+                        record_bot_reply(group_id, failure, failure_result)
         return True
     except Exception:
         _log.error("处理消息异常: %s", traceback.format_exc())
@@ -367,8 +430,18 @@ async def _agent_reply_text(
         referenced_message_ids=[_group_reference_id(message)],
     )
     current_message_id = str(getattr(message, "id", "") or "")
+    file_attachments = get_recent_group_file_attachments(
+        group_id, current_message_id=current_message_id,
+        reference_message_id=_group_reference_id(message),
+        include_recent=any(word in question for word in ("文件", "附件", "日志", "刚才", "刚刚")),
+    )
+    if not file_attachments:
+        file_attachments = extract_file_attachments(message)
+    file_inputs, skipped_files = await read_file_attachments(file_attachments, getattr(message, "_api", None))
+    if skipped_files:
+        question += "\n系统提示：以下附件未读取，不得猜测内容：" + "；".join(skipped_files)
     current_image_count = sum(
-        attachment.get("message_id") == current_message_id
+        attachment.get("relation") == "当前消息"
         for attachment in image_attachments
     )
     with TemporaryDirectory(prefix="mlcbot-agent-images-") as cache_directory:
@@ -377,6 +450,16 @@ async def _agent_reply_text(
             getattr(message, "_api", None),
             Path(cache_directory),
             group_id=group_id,
+        )
+        _log.info(
+            "Agent 图片输入状态: group=%s message=%s attachments=%d current=%d referenced=%d downloaded=%d skipped=%s",
+            group_id,
+            current_message_id,
+            len(image_attachments),
+            current_image_count,
+            sum(item.get("relation") == "引用消息" for item in image_attachments),
+            len(image_inputs),
+            skipped_images,
         )
         if skipped_images:
             question = (
@@ -390,6 +473,7 @@ async def _agent_reply_text(
             group_id=group_id,
             group_context=group_context,
             image_inputs=image_inputs,
+            file_inputs=file_inputs,
             current_message_has_image=current_image_count > 0,
             current_message_image_count=current_image_count,
         )
@@ -398,5 +482,6 @@ async def _agent_reply_text(
             messages.agent_reply(response.text),
             response.emoji_image_path,
             response.emoji_metadata,
+            response.file_paths,
         )
     return messages.agent_reply(response)

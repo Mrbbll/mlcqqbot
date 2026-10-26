@@ -72,6 +72,7 @@ def extract_image_attachments(
     for attachment in getattr(message, "attachments", None) or []:
         _append_image_attachment(attachment, "消息附件", attachments, seen_urls)
     if raw_message_data:
+        _extract_quoted_image_attachments(raw_message_data, attachments, seen_urls)
         remaining_nodes = [_MAX_FORWARD_SCAN_NODES]
         _scan_nested_image_attachments(
             raw_message_data,
@@ -86,6 +87,41 @@ def extract_image_attachments(
     return attachments
 
 
+def _extract_quoted_image_attachments(
+    raw_message_data: dict[str, Any],
+    attachments: list[dict[str, Any]],
+    seen_urls: set[str],
+) -> None:
+    """读取 QQ message_type=103 引用元素直接携带的图片附件。"""
+    elements = (
+        raw_message_data.get("msg_elements")
+        or raw_message_data.get("msgElements")
+        or []
+    )
+    if not isinstance(elements, (list, tuple)):
+        return
+    top_level_type = str(
+        raw_message_data.get("message_type")
+        or raw_message_data.get("messageType")
+        or ""
+    )
+    for element in elements[:20]:
+        if not isinstance(element, dict):
+            continue
+        element_type = str(
+            element.get("message_type")
+            or element.get("messageType")
+            or top_level_type
+        )
+        if element_type != "103":
+            continue
+        quoted_attachments = element.get("attachments") or []
+        if not isinstance(quoted_attachments, (list, tuple)):
+            continue
+        for attachment in quoted_attachments[:20]:
+            _append_image_attachment(attachment, "引用消息图片", attachments, seen_urls)
+
+
 def _append_image_attachment(
     attachment: Any,
     source: str,
@@ -98,10 +134,12 @@ def _append_image_attachment(
         return
     url = _attachment_field(attachment, "url")
     normalized_url = str(url or "").strip()
-    if normalized_url and normalized_url in seen_urls:
+    dedupe_key = normalized_url or (
+        f"{content_type}:{_attachment_field(attachment, 'filename') or ''}:{_image_size(attachment)}"
+    )
+    if dedupe_key in seen_urls:
         return
-    if normalized_url:
-        seen_urls.add(normalized_url)
+    seen_urls.add(dedupe_key)
     attachments.append(
         {
             "url": normalized_url,
@@ -109,6 +147,7 @@ def _append_image_attachment(
             "filename": str(_attachment_field(attachment, "filename") or ""),
             "size": _image_size(attachment),
             "source": source,
+            "relation": "引用消息" if source == "引用消息图片" else "",
         }
     )
 

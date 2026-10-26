@@ -75,3 +75,36 @@ def _install_group_message_nickname_compat() -> None:
 def get_group_message_raw_data(message: GroupMessage) -> dict[str, Any]:
     """取出构造群消息时保留的原始载荷，用于读取 SDK 未建模的转发字段。"""
     return _raw_group_message_data.pop(id(message), {})
+
+
+def get_group_message_indices(raw_message_data: dict[str, Any] | None) -> tuple[str, str]:
+    """从 QQ 原始载荷提取当前消息索引和引用目标索引，不保留其他扩展字段。"""
+    if not isinstance(raw_message_data, dict):
+        return "", ""
+
+    message_scene = (
+        raw_message_data.get("message_scene")
+        or raw_message_data.get("messageScene")
+        or {}
+    )
+    extensions = message_scene.get("ext", []) if isinstance(message_scene, dict) else []
+    message_index = str(
+        raw_message_data.get("msg_idx") or raw_message_data.get("msgIdx") or ""
+    ).strip()
+    reference_index = str(
+        raw_message_data.get("ref_msg_idx") or raw_message_data.get("refMsgIdx") or ""
+    ).strip()
+    if not isinstance(extensions, (list, tuple)):
+        return message_index, reference_index
+
+    for extension in extensions:
+        if not isinstance(extension, str):
+            continue
+        key, separator, value = extension.partition("=")
+        if not separator:
+            continue
+        if key.strip() == "msg_idx" and not message_index:
+            message_index = value.strip()
+        elif key.strip() == "ref_msg_idx" and not reference_index:
+            reference_index = value.strip()
+    return message_index, reference_index

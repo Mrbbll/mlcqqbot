@@ -11,9 +11,10 @@ from features.agent.tools.command import TOOLS as COMMAND_TOOLS
 from features.agent.tools.emoji import TOOLS as EMOJI_TOOLS
 from features.agent.tools.filesystem import TOOLS as FILESYSTEM_TOOLS
 from features.agent.tools.discovery import TOOLS as DISCOVERY_TOOLS
+from features.agent.tools.file_delivery import TOOLS as FILE_DELIVERY_TOOLS
 
 
-TOOL_SPECS = (*EMOJI_TOOLS, *FILESYSTEM_TOOLS, *COMMAND_TOOLS, *DISCOVERY_TOOLS)
+TOOL_SPECS = (*EMOJI_TOOLS, *FILESYSTEM_TOOLS, *COMMAND_TOOLS, *DISCOVERY_TOOLS, *FILE_DELIVERY_TOOLS)
 TOOL_REGISTRY = {tool.name: tool for tool in TOOL_SPECS}
 ALL_TOOL_SCHEMAS = [tool.schema for tool in TOOL_SPECS]
 if len(TOOL_REGISTRY) != len(TOOL_SPECS):

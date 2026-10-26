@@ -24,6 +24,8 @@ class _GroupMessage:
     has_image: bool
     image_attachments: tuple[dict[str, Any], ...]
     reference_message_id: str
+    message_index: str
+    file_attachments: tuple[dict[str, Any], ...] = ()
     role: str = "user"
     emoji: dict[str, Any] | None = None
 
@@ -38,7 +40,9 @@ def record_group_message(
     *,
     message_id: str = "",
     image_attachments: Iterable[dict[str, Any]] = (),
+    file_attachments: Iterable[dict[str, Any]] = (),
     reference_message_id: str = "",
+    message_index: str = "",
     role: str = "user",
     emoji: dict[str, Any] | None = None,
 ) -> None:
@@ -51,8 +55,10 @@ def record_group_message(
         if _is_image_attachment(attachment)
     )
     normalized_reference_id = (reference_message_id or "").strip()
+    normalized_message_index = (message_index or "").strip()
+    normalized_files = tuple(_normalize_image_attachment(item) for item in list(file_attachments)[:5])
     if not normalized_group_id or not (
-        normalized_content or normalized_images or normalized_reference_id
+        normalized_content or normalized_images or normalized_files or normalized_reference_id
     ):
         return
 
@@ -76,6 +82,8 @@ def record_group_message(
             has_image=bool(normalized_images or emoji),
             image_attachments=normalized_images,
             reference_message_id=normalized_reference_id,
+            message_index=normalized_message_index,
+            file_attachments=normalized_files,
             role=role,
             emoji=dict(emoji) if emoji else None,
         )
@@ -120,10 +128,20 @@ def get_recent_group_messages(
         for message_id in referenced_message_ids
         if (normalized_id := str(message_id or "").strip())
     }
+    current_message = next(
+        (
+            message
+            for message in group_messages
+            if exclude_message_id and message.message_id == exclude_message_id
+        ),
+        None,
+    )
+    if current_message and current_message.reference_message_id:
+        referenced_ids.add(current_message.reference_message_id)
     if referenced_ids:
         for message in group_messages:
             if (
-                message.message_id in referenced_ids
+                _matches_reference(message, referenced_ids)
                 and message.message_id not in selected_message_ids
                 and message.message_id != exclude_message_id
             ):
@@ -140,6 +158,7 @@ def get_recent_group_messages(
             "image_count": len(message.image_attachments) + int(bool(message.emoji)),
             "reference_message_id": message.reference_message_id,
             "emoji": dict(message.emoji) if message.emoji else None,
+            "files": [{"filename": item["filename"], "size": item["size"]} for item in message.file_attachments],
         }
         for message in recent_messages
     ]
@@ -169,17 +188,25 @@ def get_recent_group_image_attachments(
         for message_id in referenced_message_ids
         if (normalized_id := str(message_id or "").strip())
     }
+    current_message = next(
+        (message for message in group_messages if message.message_id == current_id),
+        None,
+    )
+    if current_message and current_message.reference_message_id:
+        referenced_ids.add(current_message.reference_message_id)
     image_records: list[dict[str, Any]] = []
     for message in group_messages:
         if not message.image_attachments:
             continue
-        if message.message_id == current_id:
-            relation = "当前消息"
-        elif message.message_id in referenced_ids:
-            relation = "引用消息"
-        else:
-            relation = "历史消息"
         for attachment in message.image_attachments:
+            if attachment.get("relation") == "引用消息":
+                relation = "引用消息"
+            elif message.message_id == current_id:
+                relation = "当前消息"
+            elif _matches_reference(message, referenced_ids):
+                relation = "引用消息"
+            else:
+                relation = "历史消息"
             image_records.append(
                 {
                     **attachment,
@@ -190,6 +217,28 @@ def get_recent_group_image_attachments(
                 }
             )
     return image_records
+
+
+def get_recent_group_file_attachments(group_id: str, *, current_message_id: str = "", reference_message_id: str = "", include_recent: bool = False) -> list[dict]:
+    """返回同群当前或引用文件；明确询问最近文件时补充最新一条文件消息。"""
+    records = _messages_by_group.get((group_id or "").strip())
+    if not records:
+        return []
+    _discard_expired(records, time.monotonic())
+    selected_ids = {value for value in (current_message_id, reference_message_id) if value}
+    current_message = next(
+        (item for item in records if item.message_id == current_message_id),
+        None,
+    )
+    if current_message and current_message.reference_message_id:
+        selected_ids.add(current_message.reference_message_id)
+    selected = [
+        item for item in records
+        if _matches_reference(item, selected_ids) and item.file_attachments
+    ]
+    if not selected and include_recent:
+        selected = next(([item] for item in reversed(records) if item.file_attachments), [])
+    return [{**attachment, "message_id": item.message_id} for item in selected for attachment in item.file_attachments]
 
 
 def _is_image_attachment(attachment: dict[str, Any]) -> bool:
@@ -211,7 +260,19 @@ def _normalize_image_attachment(attachment: dict[str, Any]) -> dict[str, Any]:
         "filename": str(attachment.get("filename") or ""),
         "size": normalized_size,
         "source": str(attachment.get("source") or "消息附件"),
+        "relation": str(attachment.get("relation") or ""),
     }
+
+
+def _matches_reference(message: _GroupMessage, referenced_ids: set[str]) -> bool:
+    """判断引用标识是否匹配原始消息 ID 或 QQ 的 REFIDX 索引。"""
+    return bool(
+        referenced_ids
+        and (
+            message.message_id in referenced_ids
+            or (message.message_index and message.message_index in referenced_ids)
+        )
+    )
 
 
 def _discard_expired(group_messages: deque[_GroupMessage], now: float) -> None:

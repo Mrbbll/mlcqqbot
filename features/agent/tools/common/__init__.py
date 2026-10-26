@@ -29,6 +29,7 @@ class ToolContext:
     saved_emoji_images: list[str] = field(default_factory=list)
     pending_emoji_images: list[dict] = field(default_factory=list)
     discovered_paths: set[str] = field(default_factory=set)
+    pending_files: list[str] = field(default_factory=list)
 
 
 def _compact_data(value: Any, limit: int) -> Any:
