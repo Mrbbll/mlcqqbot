@@ -417,6 +417,7 @@ async def _agent_reply_text(
         getattr(message, "id", ""),
     )
     question = clean_message(message.content)
+    tool_question = question
     if not question:
         question = "请结合最近的群聊内容参与对话。"
     group_context = get_recent_group_messages(
@@ -438,6 +439,10 @@ async def _agent_reply_text(
     if not file_attachments:
         file_attachments = extract_file_attachments(message)
     file_inputs, skipped_files = await read_file_attachments(file_attachments, getattr(message, "_api", None))
+    _log.info(
+        "Agent 文件输入状态: group=%s message=%s attachments=%d downloaded=%d skipped=%d",
+        group_id, current_message_id, len(file_attachments), len(file_inputs), len(skipped_files),
+    )
     if skipped_files:
         question += "\n系统提示：以下附件未读取，不得猜测内容：" + "；".join(skipped_files)
     current_image_count = sum(
@@ -474,6 +479,7 @@ async def _agent_reply_text(
             group_context=group_context,
             image_inputs=image_inputs,
             file_inputs=file_inputs,
+            tool_question=tool_question,
             current_message_has_image=current_image_count > 0,
             current_message_image_count=current_image_count,
         )

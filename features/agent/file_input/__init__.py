@@ -1,5 +1,7 @@
 """提取和有界读取 QQ 文本文件附件，附件内容始终作为不可信输入。"""
 
+import logging
+import re
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
@@ -10,10 +12,12 @@ from features.agent.tools.filesystem import decode_text
 
 
 MAX_FILE_BYTES = 1024 * 1024
-MAX_INPUT_CHARS = 16000
+MAX_INPUT_CHARS = MAX_FILE_BYTES
 TEXT_SUFFIXES = {".txt", ".log", ".md", ".json", ".jsonl", ".csv", ".tsv", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".xml", ".properties", ".py", ".js", ".ts", ".sh", ".java", ".c", ".cpp", ".h", ".sql"}
 MEDIA_HOST = "multimedia.nt.qq.com.cn"
 FILE_MEDIA_HOST = "grouptalk.c2c.qq.com"
+FTN_FILE_MEDIA_HOST = "gzc-download.ftn.qq.com"
+_log = logging.getLogger("mlcbot")
 
 
 def field(value: Any, name: str) -> Any:
@@ -47,23 +51,52 @@ def extract_file_attachments(message: Any, raw: dict | None = None) -> list[dict
     return results
 
 
+def _log_invalid_url(value: str) -> None:
+    """仅记录地址格式和主机信息，避免泄露路径、参数和凭证。"""
+    try:
+        url = "https:" + value if value.startswith("//") else value
+        parsed = urlsplit(url)
+        host = parsed.hostname or ""
+        if not parsed.scheme and not parsed.netloc and not url.startswith("/"):
+            host = urlsplit("//" + url).hostname or ""
+        host = host if re.fullmatch(r"[a-z0-9.-]{1,253}", host) else "none_or_invalid"
+        scheme = parsed.scheme if parsed.scheme in {"http", "https", "file"} else ("none" if not parsed.scheme else "other")
+        try:
+            port = parsed.port
+            port_status = "default" if port is None else ("443" if port == 443 else "other")
+        except ValueError:
+            port_status = "invalid"
+        _log.warning(
+            "Agent 文件地址校验失败: scheme=%s host=%s port=%s has_userinfo=%s",
+            scheme, host, port_status, parsed.username is not None or parsed.password is not None,
+        )
+    except ValueError:
+        _log.warning("Agent 文件地址校验失败: scheme=invalid host=none_or_invalid port=invalid has_userinfo=unknown")
+
+
 def validated_url(value: str) -> str:
     """只下载 QQ 图片或群文件 CDN 地址，不跟随重定向。"""
     url = "https:" + value if value.startswith("//") else value
-    parsed = urlsplit(url)
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        _log_invalid_url(value)
+        raise ValueError("附件地址不是支持的 QQ 媒体 CDN") from None
     if (
         parsed.scheme != "https"
-        or parsed.hostname not in {MEDIA_HOST, FILE_MEDIA_HOST}
-        or parsed.port not in (None, 443)
-        or parsed.username
-        or parsed.password
+        or parsed.hostname not in {MEDIA_HOST, FILE_MEDIA_HOST, FTN_FILE_MEDIA_HOST}
+        or port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
     ):
+        _log_invalid_url(value)
         raise ValueError("附件地址不是支持的 QQ 媒体 CDN")
     return url
 
 
 async def read_file_attachments(attachments: list[dict], api: Any) -> tuple[list[dict], list[str]]:
-    """最多读取三个文本附件，限制单文件下载和总输入量，不保存下载凭证。"""
+    """最多读取三个文本附件，单文件与总输入均限制为 1 MiB，不保存下载凭证。"""
     inputs, skipped = [], []
     if not attachments:
         return inputs, skipped
@@ -99,6 +132,7 @@ async def read_file_attachments(attachments: list[dict], api: Any) -> tuple[list
                 data = bytearray()
                 async with client.stream("GET", url, headers=request_headers) as response:
                     if response.status_code != 200:
+                        _log.warning("Agent 文件下载失败: HTTP %s", response.status_code)
                         raise ValueError(f"附件下载失败，HTTP {response.status_code}")
                     if int(response.headers.get("Content-Length", "0")) > MAX_FILE_BYTES:
                         raise ValueError("附件超过 1 MiB 读取上限")
@@ -109,7 +143,7 @@ async def read_file_attachments(attachments: list[dict], api: Any) -> tuple[list
                 text = decode_text(bytes(data))
                 if text is None:
                     raise ValueError("附件不是可识别编码的文本")
-                limit = min(8000, remaining)
+                limit = min(len(text), remaining)
                 inputs.append({"filename": name, "message_id": str(attachment.get("message_id") or ""),
                                "content": text[:limit], "truncated": len(text) > limit})
                 remaining -= min(len(text), limit)

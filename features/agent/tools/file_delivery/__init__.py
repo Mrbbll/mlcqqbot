@@ -10,20 +10,26 @@ from features.agent.tools.filesystem import path_is_authorized
 from features.file_sender import validate_file
 
 
-_FILE_TERMS = r"文件|附件|日志|文档|压缩包|脚本|配置|\.log|\.zip|\.jar|\.pdf"
+_FILE_TERMS = r"文件|附件|日志|文档|压缩包|脚本|配置|\.[a-z0-9]{1,12}(?![a-z0-9])"
+_DELIVERY_VERB = r"(?:发送(?!的|过|了)|上传(?!的|过|了)|发(?!送|的|过|了)|传(?!的|过|了))"
+_CLAUSE = r"[^，。！？!?；;\n]"
 _DELIVERY_PATTERNS = (
-    rf"(?:把|将).{{0,60}}(?:{_FILE_TERMS}).{{0,40}}(?:发给我|发我|传给我|传我|发送|上传)",
-    rf"(?:发给我|发送给我|传给我|传我).{{0,40}}(?:{_FILE_TERMS})",
-    rf"(?:帮我|麻烦).{{0,20}}(?:发|发送|传).{{0,30}}(?:{_FILE_TERMS})",
-    rf"(?:发送|发|传)(?:一下|给我)?(?:这个|该|这份|那个)?(?:{_FILE_TERMS})",
+    rf"(?:把|将){_CLAUSE}{{0,80}}(?:{_FILE_TERMS}){_CLAUSE}{{0,40}}{_DELIVERY_VERB}",
+    rf"{_DELIVERY_VERB}{_CLAUSE}{{0,80}}(?:{_FILE_TERMS})",
 )
-_NEGATED_DELIVERY = ("不要", "别发", "别传", "不用发", "不需要发", "不必发", "勿发", "为什么", "是否", "能不能", "可以吗", "可不可以", "要不要", "需要吗", "怎么", "如何")
+_NEGATED_DELIVERY = rf"(?:不要|别|勿|不必|不用|不需要|禁止|不准|不允许|先别|不把|不将){_CLAUSE}{{0,60}}(?:发送|上传|发|传)|不(?:发送|上传|发|传)"
+_DELIVERY_DISCUSSION = rf"(?:为什么|为何|怎么|如何|是否|要不要){_CLAUSE}{{0,20}}(?:发送|上传|发|传)"
+_TEXT_MESSAGE_DELIVERY = r"(?:发送|发|传)(?:给我)?(?:一条|一段|个|条)?(?:消息|文字|文本|通知)"
+_TEXT_CONTENT_DELIVERY = rf"(?:{_DELIVERY_VERB}{_CLAUSE}{{0,40}}(?:文件|日志|附件)(?:的)?内容|(?:文件|日志|附件)(?:的)?内容{_CLAUSE}{{0,40}}{_DELIVERY_VERB})"
 
 
 def user_requested_file_delivery(question: str) -> bool:
     """仅在当前消息明确提出文件发送请求时允许进入发送队列。"""
     normalized = (question or "").casefold()
-    if any(term in normalized for term in _NEGATED_DELIVERY):
+    if any(re.search(pattern, normalized) for pattern in (
+        _NEGATED_DELIVERY, _DELIVERY_DISCUSSION, _TEXT_MESSAGE_DELIVERY,
+        _TEXT_CONTENT_DELIVERY,
+    )):
         return False
     return any(re.search(pattern, normalized) for pattern in _DELIVERY_PATTERNS)
 

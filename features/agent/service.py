@@ -245,7 +245,7 @@ def _request_chat_completion(
     }
     payload = {
         "model": AGENT_MODEL,
-        "reasoning_effort": "ultra",
+        "reasoning_effort": "high",
         "messages": conversation,
         "max_tokens": 1200,
         "tools": tools if tools is not None else visible_tools(""),
@@ -427,6 +427,7 @@ async def handle_agent(
     group_context: list[dict[str, Any]] | None = None,
     image_inputs: list[dict[str, str]] | None = None,
     file_inputs: list[dict[str, Any]] | None = None,
+    tool_question: str | None = None,
     current_message_has_image: bool = False,
     current_message_image_count: int = 0,
 ) -> str | AgentReply:
@@ -435,7 +436,8 @@ async def handle_agent(
         async with agent_slot(group_id, user_id):
             return await _handle_agent(
                 question, user_id, group_id=group_id, group_context=group_context,
-                image_inputs=image_inputs, file_inputs=file_inputs, current_message_has_image=current_message_has_image,
+                image_inputs=image_inputs, file_inputs=file_inputs, tool_question=tool_question,
+                current_message_has_image=current_message_has_image,
                 current_message_image_count=current_message_image_count,
             )
     except AgentBusyError as exc:
@@ -450,6 +452,7 @@ async def _handle_agent(
     group_context: list[dict[str, Any]] | None = None,
     image_inputs: list[dict[str, str]] | None = None,
     file_inputs: list[dict[str, Any]] | None = None,
+    tool_question: str | None = None,
     current_message_has_image: bool = False,
     current_message_image_count: int = 0,
 ) -> str | AgentReply:
@@ -526,7 +529,8 @@ async def _handle_agent(
     repeated_calls = RepeatedCalls()
     run_id = uuid4().hex
     execution_results: list[dict[str, str]] = []
-    tool_context = ToolContext(question=question, user_id=user_id, group_id=group_id,
+    tool_context = ToolContext(question=question if tool_question is None else tool_question,
+                               user_id=user_id, group_id=group_id,
                                timeout_seconds=AGENT_TOOL_TIMEOUT_SECONDS, image_inputs=image_inputs or [])
     try:
         for tool_round in range(_MAX_TOOL_ROUNDS):

@@ -21,3 +21,4 @@ tests/*
 tests/agent/*
 !tests/agent/test_quoted_media.py
 !tests/agent/test_file_input.py
+!tests/agent/test_file_delivery.py
