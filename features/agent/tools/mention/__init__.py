@@ -6,10 +6,10 @@ from features.agent.tools.common import NonBlank, ToolArgs, ToolContext, ToolRes
 
 
 class MentionGroupMemberArgs(ToolArgs):
-    """声明本轮消息中可用的群成员 OpenID。"""
+    """声明由后台从本轮消息中确认的群成员 OpenID。"""
 
     user_openid: NonBlank = Field(
-        description="当前发言者或当前消息显式 @ 到的群成员 OpenID；只能使用系统提供的可提及成员 ID。"
+        description="当前发言者、当前消息原生 @ 到的成员，或正文明确提供的完整群成员 OpenID；只能使用系统提供的 ID。"
     )
 
 
@@ -35,7 +35,7 @@ def mention_group_member(args: MentionGroupMemberArgs, context: ToolContext) -> 
 TOOLS = (
     ToolSpec(
         "mention_group_member",
-        "仅当用户当前明确要求在回复中 @ 人时，提及当前发言者或当前消息显式 @ 到的群成员；最终回复会自动附加真实提及。",
+        "仅当用户当前明确要求在回复中 @ 人时，提及后台从当前消息取得的成员 OpenID；目标可来自原生 @ 或正文明确提供的完整 OpenID，不得猜测 ID。最终回复会自动附加真实提及。",
         MentionGroupMemberArgs,
         mention_group_member,
     ),

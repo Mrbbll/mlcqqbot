@@ -61,6 +61,7 @@ _ERROR_REPLY = markdown_payload(messages.PROCESSING_ERROR)
 _GROUP_MESSAGE_DEDUP_LIMIT = 4096
 _AGENT_AUTO_REPLY_PROBABILITY = 0.01
 _AT_MENTION_PATTERN = re.compile(r"<@!?(\w+)>")
+_MEMBER_OPENID_PATTERN = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 _seen_group_messages: OrderedDict[tuple[str, str], dict[str, object]] = OrderedDict()
 
 
@@ -253,7 +254,7 @@ def _group_user_id(message: GroupMessage) -> str:
 
 
 def _agent_mentionable_user_ids(message: GroupMessage, user_id: str) -> list[str]:
-    """返回当前发言者及本条消息显式 @ 到的非机器人成员 OpenID。"""
+    """返回当前发言者、本条消息显式 @ 到及正文明确提供的非机器人成员 OpenID。"""
     candidates = [user_id.strip()] if user_id.strip() else []
     for mention in getattr(message, "mentions", None) or []:
         for field in ("member_openid", "id", "user_openid"):
@@ -267,6 +268,11 @@ def _agent_mentionable_user_ids(message: GroupMessage, user_id: str) -> list[str
                 if mention_id not in QQ_BOT_MENTION_OPENIDS:
                     candidates.append(mention_id)
                 break
+    content = str(getattr(message, "content", "") or "")
+    for match in _MEMBER_OPENID_PATTERN.finditer(content):
+        mention_id = match.group(0)
+        if mention_id not in QQ_BOT_MENTION_OPENIDS:
+            candidates.append(mention_id)
     return list(dict.fromkeys(candidates))
 
 
