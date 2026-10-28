@@ -1,8 +1,8 @@
-"""Agent 表情包收藏库的加载、保存与检索接口。"""
+"""Agent 表情包收藏库的加载、保存、检索与删除接口。"""
 
 from typing import Any
 
-from .library import EmojiLibrary
+from .library import EmojiImageIdAmbiguousError, EmojiLibrary
 
 
 _LIBRARY = EmojiLibrary()
@@ -41,5 +41,18 @@ def get_emoji_image(image_id: str) -> dict[str, Any] | None:
     return _LIBRARY.get_image(image_id)
 
 
-__all__ = ["load_emoji_library", "save_emoji_image", "search_emoji_images",
-           "list_emoji_images", "get_emoji_image"]
+def delete_emoji_image(image_id: str) -> dict[str, Any] | None:
+    """按完整收藏 ID 删除图片文件和对应索引记录。"""
+    return _LIBRARY.delete_image(image_id)
+
+
+__all__ = [
+    "EmojiLibrary",
+    "EmojiImageIdAmbiguousError",
+    "load_emoji_library",
+    "save_emoji_image",
+    "search_emoji_images",
+    "list_emoji_images",
+    "get_emoji_image",
+    "delete_emoji_image",
+]

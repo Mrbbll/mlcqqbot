@@ -1,4 +1,4 @@
-"""持久化 Agent 表情包图片，并通过 JSON 索引提供分类检索。"""
+"""持久化 Agent 表情包图片，并同步维护 JSON 索引与分类检索。"""
 
 from __future__ import annotations
 
@@ -36,6 +36,10 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"COM{number}" for number in range(1, 10)),
     *(f"LPT{number}" for number in range(1, 10)),
 }
+
+
+class EmojiImageIdAmbiguousError(ValueError):
+    """表示同一完整图片 ID 对应多条记录，无法安全删除。"""
 
 
 def _safe_folder_name(value: str, fallback: str) -> str:
@@ -274,6 +278,94 @@ class EmojiLibrary:
                     image_path = self._resolve_item_path(item)
                     return {**item, "file_path": str(image_path)} if image_path is not None else None
         return None
+
+    def delete_image(self, image_id: str) -> dict[str, Any] | None:
+        """按唯一完整 ID 暂存图片并原子更新索引，失败时尽力恢复原状态。"""
+        if not isinstance(image_id, str) or not re.fullmatch(r"[0-9a-f]{16}", image_id):
+            raise ValueError("表情包 ID 格式无效")
+
+        with self._lock:
+            self._ensure_loaded()
+            matches = [item for item in self._items if item.get("id") == image_id]
+            if len(matches) > 1:
+                raise EmojiImageIdAmbiguousError("表情包 ID 不唯一，拒绝删除")
+            if not matches:
+                return None
+
+            item = matches[0]
+            image_path = self._resolve_item_path(item)
+            if image_path is None:
+                return None
+
+            original_items = self._items
+            updated_items = [entry for entry in original_items if entry is not item]
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=".emojipic-delete-",
+                suffix=image_path.suffix,
+                dir=image_path.parent,
+            )
+            os.close(descriptor)
+            temporary_path = Path(temporary_name)
+            image_staged = False
+            try:
+                os.replace(image_path, temporary_path)
+                image_staged = True
+                try:
+                    self._write_index(updated_items)
+                except Exception:
+                    try:
+                        if image_path.exists():
+                            raise FileExistsError("收藏图片原路径已被其他文件占用")
+                        os.replace(temporary_path, image_path)
+                        image_staged = False
+                    except OSError as restore_error:
+                        _log.exception("表情包删除时索引写入失败且图片恢复失败: id=%s", image_id)
+                        raise RuntimeError("索引写入失败，暂存图片无法恢复，请检查图库目录。") from restore_error
+                    raise
+
+                self._items = updated_items
+                try:
+                    temporary_path.unlink()
+                    image_staged = False
+                except OSError as cleanup_error:
+                    try:
+                        if image_path.exists():
+                            raise FileExistsError("收藏图片原路径已被其他文件占用")
+                        os.replace(temporary_path, image_path)
+                        image_staged = False
+                        self._write_index(original_items)
+                        self._items = original_items
+                    except Exception as restore_error:
+                        _log.exception("表情包删除清理失败且图库恢复失败: id=%s", image_id)
+                        raise RuntimeError("删除清理失败，图库恢复未完成，请检查图库目录。") from restore_error
+                    raise RuntimeError("图片清理失败，已恢复收藏索引和图片。") from cleanup_error
+
+                self._remove_empty_category_directory(image_path.parent, image_id)
+                return dict(item)
+            finally:
+                if not image_staged:
+                    try:
+                        temporary_path.unlink(missing_ok=True)
+                    except OSError:
+                        _log.warning("表情包删除临时文件清理失败: id=%s", image_id)
+
+    def _remove_empty_category_directory(self, directory: Path, image_id: str) -> None:
+        """图片成功删除后，仅清理图库根目录下已空的分类目录。"""
+        category_directory = directory.resolve()
+        if category_directory.parent != self.root.resolve():
+            return
+
+        try:
+            if not any(category_directory.iterdir()):
+                category_directory.rmdir()
+        except FileNotFoundError:
+            return
+        except OSError:
+            _log.warning(
+                "空表情包分类目录清理失败: id=%s path=%s",
+                image_id,
+                category_directory,
+            )
 
     def _ensure_loaded(self) -> None:
         """确保索引已加载，且不覆盖无法解析的现有索引表。"""

@@ -30,6 +30,10 @@ class ToolContext:
     pending_emoji_images: list[dict] = field(default_factory=list)
     discovered_paths: set[str] = field(default_factory=set)
     pending_files: list[str] = field(default_factory=list)
+    mentionable_user_ids: set[str] = field(default_factory=set)
+    pending_mentions: list[str] = field(default_factory=list)
+    available_emoji_ids: set[str] = field(default_factory=set)
+    emoji_delete_attempted: bool = False
 
 
 def _compact_data(value: Any, limit: int) -> Any:
@@ -97,6 +101,7 @@ class ToolSpec:
     args_model: type[ToolArgs]
     handler: Callable[[Any, ToolContext], ToolResult]
     requires_superuser: bool = False
+    permission_denied_message: str = "服务器文件和命令工具仅限超级用户使用。"
 
     @property
     def schema(self) -> dict:

@@ -12,9 +12,17 @@ from features.agent.tools.emoji import TOOLS as EMOJI_TOOLS
 from features.agent.tools.filesystem import TOOLS as FILESYSTEM_TOOLS
 from features.agent.tools.discovery import TOOLS as DISCOVERY_TOOLS
 from features.agent.tools.file_delivery import TOOLS as FILE_DELIVERY_TOOLS
+from features.agent.tools.mention import TOOLS as MENTION_TOOLS
 
 
-TOOL_SPECS = (*EMOJI_TOOLS, *FILESYSTEM_TOOLS, *COMMAND_TOOLS, *DISCOVERY_TOOLS, *FILE_DELIVERY_TOOLS)
+TOOL_SPECS = (
+    *EMOJI_TOOLS,
+    *FILESYSTEM_TOOLS,
+    *COMMAND_TOOLS,
+    *DISCOVERY_TOOLS,
+    *FILE_DELIVERY_TOOLS,
+    *MENTION_TOOLS,
+)
 TOOL_REGISTRY = {tool.name: tool for tool in TOOL_SPECS}
 ALL_TOOL_SCHEMAS = [tool.schema for tool in TOOL_SPECS]
 if len(TOOL_REGISTRY) != len(TOOL_SPECS):
@@ -37,7 +45,7 @@ def execute_tool(tool_call: dict, context: ToolContext) -> ToolResult:
     if spec is None:
         return ToolResult(False, "unknown_tool", "当前未注册该工具。")
     if spec.requires_superuser and not permissions.check_superuser(context.user_id):
-        return ToolResult(False, "permission_denied", "服务器文件和命令工具仅限超级用户使用。")
+        return ToolResult(False, "permission_denied", spec.permission_denied_message)
     arguments = function.get("arguments")
     if isinstance(arguments, str):
         try:

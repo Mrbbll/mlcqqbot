@@ -252,6 +252,24 @@ def _group_user_id(message: GroupMessage) -> str:
     return getattr(getattr(message, "author", None), "member_openid", "") or ""
 
 
+def _agent_mentionable_user_ids(message: GroupMessage, user_id: str) -> list[str]:
+    """返回当前发言者及本条消息显式 @ 到的非机器人成员 OpenID。"""
+    candidates = [user_id.strip()] if user_id.strip() else []
+    for mention in getattr(message, "mentions", None) or []:
+        for field in ("member_openid", "id", "user_openid"):
+            mention_id = (
+                mention.get(field, "")
+                if isinstance(mention, dict)
+                else getattr(mention, field, "")
+            )
+            mention_id = str(mention_id or "").strip()
+            if mention_id:
+                if mention_id not in QQ_BOT_MENTION_OPENIDS:
+                    candidates.append(mention_id)
+                break
+    return list(dict.fromkeys(candidates))
+
+
 def _group_reference_id(message: GroupMessage) -> str:
     """读取群消息引用目标的消息 ID。"""
     reference = getattr(message, "message_reference", None)
@@ -479,6 +497,7 @@ async def _agent_reply_text(
             group_context=group_context,
             image_inputs=image_inputs,
             file_inputs=file_inputs,
+            mentionable_user_ids=_agent_mentionable_user_ids(message, user_id),
             tool_question=tool_question,
             current_message_has_image=current_image_count > 0,
             current_message_image_count=current_image_count,
