@@ -58,7 +58,8 @@ install_group_message_parser_compat()
 _log = logging.getLogger("mlcbot")
 _ERROR_REPLY = markdown_payload(messages.PROCESSING_ERROR)
 _GROUP_MESSAGE_DEDUP_LIMIT = 4096
-_AGENT_AUTO_REPLY_PROBABILITY = 0.01
+_AGENT_AUTO_REPLY_PROBABILITY = 0.05
+_AGENT_SILENT_REPLY_MARKER = "[[NO_REPLY]]"
 _AT_MENTION_PATTERN = re.compile(r"<@!?(\w+)>")
 _MEMBER_OPENID_PATTERN = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 _seen_group_messages: OrderedDict[tuple[str, str], dict[str, object]] = OrderedDict()
@@ -540,10 +541,14 @@ async def _agent_reply_text(
             current_message_image_count=current_image_count,
         )
     if isinstance(response, AgentReply):
+        if response.text.strip() == _AGENT_SILENT_REPLY_MARKER:
+            return ""
         return AgentReply(
             messages.agent_reply(response.text),
             response.emoji_image_path,
             response.emoji_metadata,
             response.file_paths,
         )
+    if response.strip() == _AGENT_SILENT_REPLY_MARKER:
+        return ""
     return messages.agent_reply(response)
