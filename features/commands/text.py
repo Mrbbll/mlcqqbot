@@ -4,9 +4,8 @@ from collections.abc import Sequence
 
 
 def clean_message(content: str | None) -> str:
-    """去除机器人 mention 并清理首尾空白。"""
+    """去除 QQ 原生提及标记并保留普通 @ 文本。"""
     content = re.sub(r"<@!?\w+>", "", content or "")
-    content = re.sub(r"@\S+", "", content)
     return content.strip()
 
 

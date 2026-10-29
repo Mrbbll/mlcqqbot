@@ -6,10 +6,10 @@ from features.agent.tools.common import NonBlank, ToolArgs, ToolContext, ToolRes
 
 
 class MentionGroupMemberArgs(ToolArgs):
-    """声明由后台从本轮消息中确认的群成员 OpenID。"""
+    """声明从近期群聊上下文中选取的成员 user_id。"""
 
-    user_openid: NonBlank = Field(
-        description="当前发言者、当前消息原生 @ 到的成员，或正文明确提供的完整群成员 OpenID；只能使用系统提供的 ID。"
+    user_id: NonBlank = Field(
+        description="近期消息发言者的 user_id，或 QQ 原生 <@ID>/<@!ID> 标记内部的 ID；只填写 ID 值，不带标记。"
     )
 
 
@@ -17,7 +17,7 @@ def mention_group_member(args: MentionGroupMemberArgs, context: ToolContext) -> 
     """校验群聊和目标范围，将成员加入最终回复的提及队列。"""
     if not context.group_id:
         return ToolResult(False, "group_required", "成员提及只支持群聊。")
-    target = args.user_openid.strip()
+    target = args.user_id.strip()
     if target not in context.mentionable_user_ids:
         return ToolResult(False, "mention_target_unavailable", "目标不在当前消息允许提及的成员范围内。")
     if target in context.pending_mentions:
@@ -35,7 +35,7 @@ def mention_group_member(args: MentionGroupMemberArgs, context: ToolContext) -> 
 TOOLS = (
     ToolSpec(
         "mention_group_member",
-        "仅当用户当前明确要求在回复中 @ 人时，提及后台从当前消息取得的成员 OpenID；目标可来自原生 @ 或正文明确提供的完整 OpenID，不得猜测 ID。最终回复会自动附加真实提及。",
+        "仅当用户当前明确要求在回复中 @ 人时，从当前或近期消息的 user_id 或原生 <@ID>/<@!ID> 标记中取得目标 ID，并将 ID 值填入 user_id 参数；不按昵称猜测或编造 ID。最终回复会自动附加真实提及。",
         MentionGroupMemberArgs,
         mention_group_member,
     ),

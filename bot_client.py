@@ -36,7 +36,6 @@ from features.qq_game_bridge import (
 )
 from features.interactions.dispatcher import handle_interaction
 from presentation import messages
-from features.commands.text import clean_message
 from external_tools.storage.group_memory import (
     get_recent_group_image_attachments,
     get_recent_group_messages,
@@ -144,6 +143,7 @@ async def handle_group_message(
                 group_id=getattr(message, "group_openid", "") or "",
                 api=api,
                 force_agent=True,
+                received_at=received_at,
             )
             state["status"] = "handled"
         return
@@ -206,12 +206,13 @@ async def handle_group_message(
     record_group_message(
         group_id,
         user_id,
-        clean_message(message.content),
+        message.content or "",
         message_id=str(getattr(message, "id", "") or ""),
         image_attachments=image_attachments,
         file_attachments=extract_file_attachments(message, raw_message_data),
         reference_message_id=reference_message_id,
         message_index=message_index,
+        received_at=received_at,
     )
     handled = await handle_command_message(
         message,
@@ -220,6 +221,7 @@ async def handle_group_message(
         group_id=group_id,
         api=api,
         is_at_message=is_at_message,
+        received_at=received_at,
     )
     if state is not None:
         if not handled and state.get("at_message_pending"):
@@ -230,6 +232,7 @@ async def handle_group_message(
                 group_id=group_id,
                 api=api,
                 force_agent=True,
+                received_at=received_at,
             )
             state["status"] = "handled"
         else:
@@ -253,8 +256,12 @@ def _group_user_id(message: GroupMessage) -> str:
     return getattr(getattr(message, "author", None), "member_openid", "") or ""
 
 
-def _agent_mentionable_user_ids(message: GroupMessage, user_id: str) -> list[str]:
-    """返回当前发言者、本条消息显式 @ 到及正文明确提供的非机器人成员 OpenID。"""
+def _agent_mentionable_user_ids(
+    message: GroupMessage,
+    user_id: str,
+    group_context: list[dict] | None = None,
+) -> list[str]:
+    """返回当前消息及近期群聊中真实发言者的非机器人 OpenID。"""
     candidates = [user_id.strip()] if user_id.strip() else []
     for mention in getattr(message, "mentions", None) or []:
         for field in ("member_openid", "id", "user_openid"):
@@ -273,6 +280,18 @@ def _agent_mentionable_user_ids(message: GroupMessage, user_id: str) -> list[str
         mention_id = match.group(0)
         if mention_id not in QQ_BOT_MENTION_OPENIDS:
             candidates.append(mention_id)
+    for context_message in group_context or []:
+        if not isinstance(context_message, dict) or context_message.get("role") != "user":
+            continue
+        context_user_id = str(context_message.get("user_id") or "").strip()
+        if context_user_id and context_user_id != "未知用户":
+            if context_user_id not in QQ_BOT_MENTION_OPENIDS:
+                candidates.append(context_user_id)
+        context_content = str(context_message.get("content") or "")
+        for match in _MEMBER_OPENID_PATTERN.finditer(context_content):
+            mention_id = match.group(0)
+            if mention_id not in QQ_BOT_MENTION_OPENIDS:
+                candidates.append(mention_id)
     return list(dict.fromkeys(candidates))
 
 
@@ -334,6 +353,7 @@ async def handle_command_message(
     api=None,
     is_at_message: bool = False,
     force_agent: bool = False,
+    received_at: float | None = None,
 ) -> bool:
     """执行文本命令或 agent 兜底，并返回是否已经发送回复。"""
     try:
@@ -341,7 +361,9 @@ async def handle_command_message(
         emoji_metadata = None
         file_paths = ()
         if force_agent:
-            reply_text = await _agent_reply_text(message, user_id, group_id)
+            reply_text = await _agent_reply_text(
+                message, user_id, group_id, received_at=received_at
+            )
         else:
             reply_text = await route_command(
                 message.content or "",
@@ -357,7 +379,9 @@ async def handle_command_message(
                     or random.random() < _AGENT_AUTO_REPLY_PROBABILITY
                 )
                 if should_auto_reply:
-                    reply_text = await _agent_reply_text(message, user_id, group_id)
+                    reply_text = await _agent_reply_text(
+                        message, user_id, group_id, received_at=received_at
+                    )
         if isinstance(reply_text, AgentReply):
             emoji_image_path = reply_text.emoji_image_path
             emoji_metadata = reply_text.emoji_metadata
@@ -432,6 +456,8 @@ async def _agent_reply_text(
     message: GroupMessage | C2CMessage,
     user_id: str,
     group_id: str,
+    *,
+    received_at: float | None = None,
 ) -> str | AgentReply:
     """准备当前问题和近期群聊上下文，调用 agent 生成回复。"""
     _log.info(
@@ -440,7 +466,7 @@ async def _agent_reply_text(
         user_id,
         getattr(message, "id", ""),
     )
-    question = clean_message(message.content)
+    question = message.content or ""
     tool_question = question
     if not question:
         question = "请结合最近的群聊内容参与对话。"
@@ -448,17 +474,20 @@ async def _agent_reply_text(
         group_id,
         exclude_message_id=str(getattr(message, "id", "") or ""),
         referenced_message_ids=[_group_reference_id(message)],
+        current_message_received_at=received_at,
     )
     image_attachments = get_recent_group_image_attachments(
         group_id,
         current_message_id=str(getattr(message, "id", "") or ""),
         referenced_message_ids=[_group_reference_id(message)],
+        current_message_received_at=received_at,
     )
     current_message_id = str(getattr(message, "id", "") or "")
     file_attachments = get_recent_group_file_attachments(
         group_id, current_message_id=current_message_id,
         reference_message_id=_group_reference_id(message),
         include_recent=any(word in question for word in ("文件", "附件", "日志", "刚才", "刚刚")),
+        current_message_received_at=received_at,
     )
     if not file_attachments:
         file_attachments = extract_file_attachments(message)
@@ -503,7 +532,9 @@ async def _agent_reply_text(
             group_context=group_context,
             image_inputs=image_inputs,
             file_inputs=file_inputs,
-            mentionable_user_ids=_agent_mentionable_user_ids(message, user_id),
+            mentionable_user_ids=_agent_mentionable_user_ids(
+                message, user_id, group_context
+            ),
             tool_question=tool_question,
             current_message_has_image=current_image_count > 0,
             current_message_image_count=current_image_count,
