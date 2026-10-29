@@ -381,7 +381,11 @@ async def handle_command_message(
                 )
                 if should_auto_reply:
                     reply_text = await _agent_reply_text(
-                        message, user_id, group_id, received_at=received_at
+                        message,
+                        user_id,
+                        group_id,
+                        received_at=received_at,
+                        allow_silent_reply=not is_at_message,
                     )
         if isinstance(reply_text, AgentReply):
             emoji_image_path = reply_text.emoji_image_path
@@ -459,8 +463,9 @@ async def _agent_reply_text(
     group_id: str,
     *,
     received_at: float | None = None,
+    allow_silent_reply: bool = False,
 ) -> str | AgentReply:
-    """准备当前问题和近期群聊上下文，调用 agent 生成回复。"""
+    """准备上下文并调用 Agent；仅被动抽样消息允许按提示词静默。"""
     _log.info(
         "[Agent 自动回复请求] group=%s user=%s message=%s",
         group_id,
@@ -542,7 +547,14 @@ async def _agent_reply_text(
         )
     if isinstance(response, AgentReply):
         if response.text.strip() == _AGENT_SILENT_REPLY_MARKER:
-            return ""
+            if allow_silent_reply:
+                return ""
+            return AgentReply(
+                messages.agent_reply(messages.AGENT_EMPTY_REPLY),
+                response.emoji_image_path,
+                response.emoji_metadata,
+                response.file_paths,
+            )
         return AgentReply(
             messages.agent_reply(response.text),
             response.emoji_image_path,
@@ -550,5 +562,7 @@ async def _agent_reply_text(
             response.file_paths,
         )
     if response.strip() == _AGENT_SILENT_REPLY_MARKER:
-        return ""
+        if allow_silent_reply:
+            return ""
+        return messages.agent_reply(messages.AGENT_EMPTY_REPLY)
     return messages.agent_reply(response)
