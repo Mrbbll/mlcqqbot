@@ -196,6 +196,8 @@ python main.py
 
 成功启动后日志会显示 "机器人已上线！"。
 
+排查群消息中的 @成员 信息丢失时，在 `.env` 设置 `QQ_GROUP_MESSAGE_DEBUG=true` 并重启机器人（默认关闭）。复现后在 `logs/mlcbot.log` 搜索 `[群消息提及调试]`，按 `message_id` 对比 `raw_content` / `parsed_content` 和 `raw_mentions` / `parsed_mentions`。日志还包含原始字段名及消息元素字段名，便于判断是否有 SDK 未建模的数据；不会打印完整载荷或附件下载地址。原始正文和提及均无目标时，说明当前事件未提供这些身份字段；原始有、解析后无则说明 SDK 丢失。排查完成后设为 `false` 并重启。
+
 ### 5. 创建群聊指令面板（可选）
 
 
