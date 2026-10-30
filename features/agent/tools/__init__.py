@@ -13,6 +13,7 @@ from features.agent.tools.filesystem import TOOLS as FILESYSTEM_TOOLS
 from features.agent.tools.discovery import TOOLS as DISCOVERY_TOOLS
 from features.agent.tools.file_delivery import TOOLS as FILE_DELIVERY_TOOLS
 from features.agent.tools.mention import TOOLS as MENTION_TOOLS
+from features.agent.tools.web_search import TOOLS as WEB_SEARCH_TOOLS
 
 
 TOOL_SPECS = (
@@ -22,6 +23,7 @@ TOOL_SPECS = (
     *DISCOVERY_TOOLS,
     *FILE_DELIVERY_TOOLS,
     *MENTION_TOOLS,
+    *WEB_SEARCH_TOOLS,
 )
 TOOL_REGISTRY = {tool.name: tool for tool in TOOL_SPECS}
 ALL_TOOL_SCHEMAS = [tool.schema for tool in TOOL_SPECS]

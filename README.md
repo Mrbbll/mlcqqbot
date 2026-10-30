@@ -287,6 +287,37 @@ if status:
     print(f"玩家: {get_players(status)}")
 ```
 
+### Agent 网络搜索
+
+安装或更新 `requirements.txt` 中的依赖后，用户可通过现有 Agent 对话提出联网查询，无需新增 QQ 指令或搜索 API 密钥。
+模型先生成 2–4 个互补关键词，`search_web` 使用 DDGS 按顺序搜索，每个关键词最多取 3 条并合并去重，返回带编号的标题、摘要和网址目录。
+模型阅读目录后筛选 1–3 个编号，调用 `extract_web_pages`，由 Trafilatura 提取正文，再基于正文回答并附来源网址。
+结果编号仅在当前 Agent 请求中有效；单个来源失败会返回原因并保留其他结果。网页仅支持公网 HTTP(S) HTML，下载上限为 2 MiB，每页正文最多返回 1800 字符，截断和失败均会标记。
+搜索引擎限流、目标站点反爬、登录限制或仅通过 JavaScript 加载的网页可能导致无结果或正文提取失败。
+
+搜索超时或后端异常时，默认按 `bing,wikipedia` 顺序最多尝试两次；每个关键词分配一部分剩余工具预算。
+本项目中的 `bing` 使用独立的必应中国版适配器：请求 `https://cn.bing.com/search`，指定 `mkt=zh-CN`、`cc=CN`、`ensearch=0`，复用 DDGS 的结果解析和链接解码。
+它不依赖 DDGS 已禁用的内置 Bing 注册项，也不修改第三方安装包；需要 DDGS 9.16.1 或更新的 9.x 版本。若站点返回验证码或无可解析结果，则转到 Wikipedia 备用后端。
+可在 `.env` 中设置以下选项，更新后重启机器人：
+
+```dotenv
+AGENT_WEB_SEARCH_TIMEOUT_SECONDS=10
+AGENT_WEB_SEARCH_BACKENDS=bing,wikipedia
+# 仅在有可用代理时设置，填写机器人运行主机能访问的实际代理地址：
+# AGENT_WEB_SEARCH_PROXY=http://127.0.0.1:7890
+```
+
+超时配置范围为 1–60 秒；后端列表最多取前两个，单个后端可填写 `bing` 或 `duckduckgo` 等 DDGS 支持的名称。
+`AGENT_WEB_SEARCH_PROXY` 仅用于 DDGS 搜索，也兼容读取 `DDGS_PROXY`。搜索持续超时需要检查运行主机到搜索服务或代理的连通性，增加超时不能解决网络不可达问题。
+日志会给出后端、关键词序号、尝试次数、请求超时、耗时、是否配置代理和异常类型，不输出代理凭证或原始异常正文。
+必应中国版同时支持 `h2` 和 `div.b_algoheader` 两种结果标题结构。失败日志还会提供 `reason`、`http_status`、`response_chars` 和 `result_blocks`：`verification_required` 表示站点要求验证，`parse_mismatch` 表示有结果块但结构无法解析，`no_results` 表示明确的无匹配页，`tls_error` / `dns_error` / `connection_error` 表示相应网络错误；这些诊断也会提供给模型，且不包含页面正文或查询词。
+
+隔离测试（需要先安装项目依赖）：
+
+```bash
+python -m unittest discover -s tests/agent/web_search -v
+```
+
 ## 注意事项
 
 1. **服务器图标**：QQ 官方 bot 群聊消息不支持直接嵌入 base64 图片，当前版本使用纯文字展示

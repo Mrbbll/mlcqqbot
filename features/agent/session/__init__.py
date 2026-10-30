@@ -38,7 +38,7 @@ def get_execution_history(group_id: str, user_id: str, privileged: bool) -> list
 
 def remember_execution(group_id: str, user_id: str, privileged: bool,
                        question: str, results: list[dict]) -> None:
-    """仅保存实际工具执行记录；不保存待发送回复、图片或工具参数。"""
+    """保存发送者 ID 及实际工具执行记录；不保存待发送回复、图片或工具参数。"""
     if not results:
         return
     now = time.monotonic()
@@ -59,7 +59,7 @@ def remember_execution(group_id: str, user_id: str, privileged: bool,
             text = text[:max(0, limit - len(marker))] + marker
         records.append({"tool": result["tool"], "result": text})
         remaining -= len(text)
-    turn = {"question": question[:600], "results": records}
+    turn = {"user_id": user_id, "question": question[:600], "results": records}
     while len(json.dumps(turn, ensure_ascii=False)) > MAX_TURN_CHARS and records:
         records.pop()
     turns.append((now, turn))

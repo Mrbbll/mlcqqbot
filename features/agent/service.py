@@ -445,6 +445,10 @@ async def _handle_agent(
             f"{serialized_context}\n\n当前需要回复的消息：\n{question}"
         )
     user_text = history_text + (
+        "当前消息发送者（平台提供）："
+        + json.dumps({"user_id": user_id}, ensure_ascii=False)
+        + "\n当前消息中的“我”指该发送者；用户要求“@我”时，"
+        "使用该 user_id 调用 mention_group_member。历史消息中的“我”对应各条记录自己的 user_id。\n\n"
         "当前消息图片信息："
         f"has_image={current_message_has_image}, "
         f"image_count={current_message_image_count}\n\n"
