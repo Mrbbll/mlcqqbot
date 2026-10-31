@@ -27,15 +27,42 @@ def field(value: Any, name: str) -> Any:
 
 def extract_file_attachments(message: Any, raw: dict | None = None) -> list[dict]:
     """提取消息和平台附带引用消息中的普通附件，不扫描任意嵌套文本。"""
-    candidates = list(getattr(message, "attachments", None) or [])
+    quoted_candidates = []
+    element_candidates = []
     if raw:
-        candidates.extend(raw.get("attachments") or [])
-        for element in (raw.get("msg_elements") or [])[:10]:
+        elements = (raw.get("msg_elements") or [])[:10]
+        for element in elements:
             if isinstance(element, dict):
-                candidates.extend(element.get("attachments") or [])
+                element_type = str(
+                    element.get("message_type")
+                    or element.get("messageType")
+                    or raw.get("message_type")
+                    or raw.get("messageType")
+                    or ""
+                )
+                is_quoted = element_type == "103"
+                target = quoted_candidates if is_quoted else element_candidates
+                target.extend(
+                    (
+                        item,
+                        "引用消息附件" if is_quoted else "消息附件",
+                        "引用消息" if is_quoted else "当前消息",
+                    )
+                    for item in element.get("attachments") or []
+                )
+    candidates = quoted_candidates + [
+        (item, "消息附件", "当前消息")
+        for item in getattr(message, "attachments", None) or []
+    ]
+    if raw:
+        candidates.extend(
+            (item, "消息附件", "当前消息")
+            for item in raw.get("attachments") or []
+        )
+    candidates.extend(element_candidates)
     results = []
     seen = set()
-    for item in candidates:
+    for item, source, relation in candidates:
         content_type = str(field(item, "content_type") or "").split(";", 1)[0].lower()
         if content_type.startswith(("image/", "audio/", "video/")):
             continue
@@ -44,8 +71,20 @@ def extract_file_attachments(message: Any, raw: dict | None = None) -> list[dict
         if not url or url in seen:
             continue
         seen.add(url)
-        results.append({"url": url, "filename": name, "content_type": content_type,
-                        "size": field(item, "size")})
+        results.append({
+            "url": url,
+            "filename": name,
+            "content_type": content_type,
+            "size": field(item, "size"),
+            "source": source,
+            "relation": relation,
+            "source_message_id": str(
+                field(item, "source_message_id") or field(item, "message_id") or ""
+            ),
+            "source_user_id": str(
+                field(item, "source_user_id") or field(item, "user_id") or ""
+            ),
+        })
         if len(results) >= 5:
             break
     return results
@@ -144,8 +183,25 @@ async def read_file_attachments(attachments: list[dict], api: Any) -> tuple[list
                 if text is None:
                     raise ValueError("附件不是可识别编码的文本")
                 limit = min(len(text), remaining)
-                inputs.append({"filename": name, "message_id": str(attachment.get("message_id") or ""),
-                               "content": text[:limit], "truncated": len(text) > limit})
+                source_message_id = str(
+                    attachment.get("source_message_id") or attachment.get("message_id") or ""
+                )
+                source_user_id = str(
+                    attachment.get("source_user_id") or attachment.get("user_id") or ""
+                )
+                inputs.append({
+                    "filename": name,
+                    "message_id": source_message_id,
+                    "user_id": source_user_id,
+                    "source_message_id": source_message_id,
+                    "source_user_id": source_user_id,
+                    "relation": str(attachment.get("relation") or "来源未知"),
+                    "carrier_message_id": str(attachment.get("carrier_message_id") or ""),
+                    "carrier_user_id": str(attachment.get("carrier_user_id") or ""),
+                    "quoted_by_user_id": str(attachment.get("quoted_by_user_id") or ""),
+                    "content": text[:limit],
+                    "truncated": len(text) > limit,
+                })
                 remaining -= min(len(text), limit)
                 if remaining <= 0:
                     break

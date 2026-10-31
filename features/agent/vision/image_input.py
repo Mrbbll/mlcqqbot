@@ -69,10 +69,11 @@ def extract_image_attachments(
     """提取当前消息和可展开转发载荷中的图片附件元数据。"""
     attachments: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
+    if raw_message_data:
+        _extract_quoted_image_attachments(raw_message_data, attachments, seen_urls)
     for attachment in getattr(message, "attachments", None) or []:
         _append_image_attachment(attachment, "消息附件", attachments, seen_urls)
     if raw_message_data:
-        _extract_quoted_image_attachments(raw_message_data, attachments, seen_urls)
         remaining_nodes = [_MAX_FORWARD_SCAN_NODES]
         _scan_nested_image_attachments(
             raw_message_data,
@@ -147,7 +148,21 @@ def _append_image_attachment(
             "filename": str(_attachment_field(attachment, "filename") or ""),
             "size": _image_size(attachment),
             "source": source,
-            "relation": "引用消息" if source == "引用消息图片" else "",
+            "relation": (
+                "引用消息" if source == "引用消息图片"
+                else "转发消息" if source == "转发消息图片"
+                else ""
+            ),
+            "source_message_id": str(
+                _attachment_field(attachment, "source_message_id")
+                or _attachment_field(attachment, "message_id")
+                or ""
+            ),
+            "source_user_id": str(
+                _attachment_field(attachment, "source_user_id")
+                or _attachment_field(attachment, "user_id")
+                or ""
+            ),
         }
     )
 
@@ -361,10 +376,14 @@ def _download_images_sync(
                     "description": _image_description(attachment),
                     "source_group_id": group_id,
                     "source_message_id": str(
-                        _attachment_field(attachment, "message_id") or ""
+                        _attachment_field(attachment, "source_message_id")
+                        or _attachment_field(attachment, "message_id")
+                        or ""
                     ),
                     "source_user_id": str(
-                        _attachment_field(attachment, "user_id") or ""
+                        _attachment_field(attachment, "source_user_id")
+                        or _attachment_field(attachment, "user_id")
+                        or ""
                     ),
                 }
             )
@@ -386,8 +405,21 @@ def _image_description(attachment: Any) -> str:
     fields = (
         ("消息关系", _attachment_field(attachment, "relation")),
         ("图片来源", _attachment_field(attachment, "source")),
-        ("发送者", _attachment_field(attachment, "user_id")),
-        ("消息", _attachment_field(attachment, "message_id")),
+        (
+            "原始发送者",
+            _attachment_field(attachment, "source_user_id")
+            or _attachment_field(attachment, "user_id")
+            or "未知",
+        ),
+        (
+            "原始消息",
+            _attachment_field(attachment, "source_message_id")
+            or _attachment_field(attachment, "message_id")
+            or "未知",
+        ),
+        ("承载消息", _attachment_field(attachment, "carrier_message_id")),
+        ("承载消息发送者", _attachment_field(attachment, "carrier_user_id")),
+        ("引用者", _attachment_field(attachment, "quoted_by_user_id")),
         ("消息文字", _attachment_field(attachment, "message_content")),
         ("文件名", _attachment_field(attachment, "filename")),
     )

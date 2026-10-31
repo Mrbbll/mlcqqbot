@@ -41,6 +41,9 @@ class FileInputTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(group_memory.time, "monotonic", return_value=100):
             group_memory.record_group_message("g", "u", "", message_id="m", file_attachments=items)
             self.assertEqual(len(group_memory.get_recent_group_file_attachments("g", current_message_id="m")), 1)
+            attachment = group_memory.get_recent_group_file_attachments("g", current_message_id="m")[0]
+            self.assertEqual(attachment["source_message_id"], "m")
+            self.assertEqual(attachment["source_user_id"], "u")
             self.assertEqual(len(group_memory.get_recent_group_file_attachments("g", reference_message_id="m")), 1)
             self.assertEqual(len(group_memory.get_recent_group_file_attachments("g", include_recent=True)), 1)
             self.assertEqual(group_memory.get_recent_group_file_attachments("other", include_recent=True), [])
@@ -53,10 +56,13 @@ class FileInputTests(unittest.IsolatedAsyncioTestCase):
         """实际下载文本进入模型的用户数据，URL 和授权头不进入模型。"""
         manager, client = self.mock_download(b"log: ERROR hello")
         api = SimpleNamespace(_http=SimpleNamespace(check_session=AsyncMock(), _headers={"Authorization": "QQBot secret"}))
+        attachment = {**self.item, "source_message_id": "source-message", "source_user_id": "source-user"}
         with patch.object(file_input.httpx, "AsyncClient", return_value=manager):
-            inputs, skipped = await file_input.read_file_attachments([self.item], api)
+            inputs, skipped = await file_input.read_file_attachments([attachment], api)
         self.assertFalse(skipped)
         self.assertEqual(inputs[0]["content"], "log: ERROR hello")
+        self.assertEqual(inputs[0]["source_message_id"], "source-message")
+        self.assertEqual(inputs[0]["source_user_id"], "source-user")
         self.assertEqual(client.stream.call_args.kwargs["headers"], {"Authorization": "QQBot secret"})
         model = AsyncMock(return_value={"content": "日志有报错"})
         with patch.object(service, "AGENT_API_URL", "fake"), patch.object(service, "AGENT_API_KEY", "fake"), patch.object(service, "AGENT_MODEL", "fake"), patch.object(service, "_ask_model", model), patch.object(permissions, "check_superuser", return_value=False):
@@ -64,6 +70,9 @@ class FileInputTests(unittest.IsolatedAsyncioTestCase):
         content = model.call_args.args[0][-1]["content"]
         self.assertIn("log: ERROR hello", content)
         self.assertIn("不可信数据", content)
+        self.assertIn('"source_user_id": "source-user"', content)
+        self.assertIn("相同 user_id 是同一成员", content)
+        self.assertIn("quoted_by_user_id 仅为引用者", content)
         self.assertNotIn("hidden", content)
         self.assertNotIn("QQBot secret", content)
 
@@ -154,6 +163,48 @@ class FileInputTests(unittest.IsolatedAsyncioTestCase):
         items = file_input.extract_file_attachments(SimpleNamespace(attachments=[]), {"msg_elements": [{"attachments": [self.item]}]})
         self.assertEqual(items[0]["filename"], "latest.log")
         self.assertEqual(bot_client._group_reference_id(SimpleNamespace(message_reference=SimpleNamespace(message_id="quoted-file-message"))), "quoted-file-message")
+
+    def test_quoted_file_uses_original_author_when_cached(self):
+        """引用文件输入关联原消息作者，并单独保留引用者。"""
+        group_memory.record_group_message(
+            "g", "original-sender", "原文件消息", message_id="original-message",
+            file_attachments=[self.item],
+        )
+        quoted = file_input.extract_file_attachments(
+            SimpleNamespace(attachments=[self.item]),
+            {"msg_elements": [{"message_type": 103, "attachments": [self.item]}]},
+        )
+        group_memory.record_group_message(
+            "g", "quoting-sender", "引用文件", message_id="quote-message",
+            reference_message_id="original-message", file_attachments=quoted,
+        )
+
+        attachments = group_memory.get_recent_group_file_attachments(
+            "g", current_message_id="quote-message"
+        )
+
+        self.assertEqual({item["source_user_id"] for item in attachments}, {"original-sender"})
+        quoted_attachment = next(item for item in attachments if item["source"] == "引用消息附件")
+        self.assertEqual(quoted_attachment["quoted_by_user_id"], "quoting-sender")
+
+    def test_quoted_file_without_original_author_stays_unknown(self):
+        """缓存没有原消息时，不把引用文件发送者误记为引用者。"""
+        quoted = file_input.extract_file_attachments(
+            SimpleNamespace(attachments=[]),
+            {"msg_elements": [{"message_type": 103, "attachments": [self.item]}]},
+        )
+        group_memory.record_group_message(
+            "g", "quoting-sender", "引用文件", message_id="quote-message",
+            reference_message_id="missing-original", file_attachments=quoted,
+        )
+
+        attachments = group_memory.get_recent_group_file_attachments(
+            "g", current_message_id="quote-message"
+        )
+
+        self.assertEqual(attachments[0]["source_message_id"], "missing-original")
+        self.assertEqual(attachments[0]["source_user_id"], "")
+        self.assertEqual(attachments[0]["quoted_by_user_id"], "quoting-sender")
 
     async def test_stream_limit_binary_redirect_and_large_log(self):
         """未知长度仍受大小限制，二进制和重定向拒绝，长日志在上限内完整保留。"""

@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from external_tools.qq.botpy_compat import get_group_message_indices
 from external_tools.storage import group_memory
-from features.agent.vision.image_input import extract_image_attachments
+from features.agent.vision.image_input import _image_description, extract_image_attachments
 
 
 class QuotedMediaTests(unittest.TestCase):
@@ -37,7 +37,12 @@ class QuotedMediaTests(unittest.TestCase):
 
     def test_quoted_message_element_image_is_marked_as_reference(self):
         """引用元素直接附带的图片 URL 会被解析并标为引用图片。"""
-        message = SimpleNamespace(attachments=[])
+        message = SimpleNamespace(attachments=[{
+            "content_type": "image/png",
+            "filename": "quoted.png",
+            "size": 12,
+            "url": "https://multimedia.nt.qq.com.cn/download?token=hidden",
+        }])
         raw_data = {
             "message_type": 103,
             "msg_elements": [
@@ -61,6 +66,7 @@ class QuotedMediaTests(unittest.TestCase):
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0]["relation"], "引用消息")
         self.assertEqual(images[0]["source"], "引用消息图片")
+        self.assertEqual(images[0]["source_user_id"], "")
 
     def test_reference_index_resolves_original_message_image(self):
         """当前消息的 ref_msg_idx 能找到此前缓存消息中的图片和文字。"""
@@ -112,8 +118,78 @@ class QuotedMediaTests(unittest.TestCase):
         self.assertEqual(len(images), 1)
         self.assertEqual(images[0]["relation"], "引用消息")
         self.assertEqual(images[0]["message_id"], "original-message")
+        self.assertEqual(images[0]["source_user_id"], "sender")
         self.assertEqual([item["content"] for item in context], ["原图片消息"])
+        self.assertEqual(context[0]["images"][0]["source_user_id"], "sender")
         self.assertEqual(files[0]["message_id"], "original-message")
+        self.assertEqual(files[0]["source_user_id"], "sender")
+
+    def test_image_description_exposes_original_sender_and_message(self):
+        """传给模型的图片说明明确标出原始发送者和消息 ID。"""
+        description = _image_description({
+            "source": "消息附件",
+            "source_message_id": "image-message",
+            "source_user_id": "image-sender",
+        })
+
+        self.assertIn("原始发送者：image-sender", description)
+        self.assertIn("原始消息：image-message", description)
+
+    def test_quoted_image_uses_original_author_when_cached(self):
+        """引用预览图优先关联到被引用消息作者，不归给引用者。"""
+        url = "https://multimedia.nt.qq.com.cn/download?token=hidden"
+        group_memory.record_group_message(
+            "group",
+            "original-sender",
+            "原始图片",
+            message_id="original-message",
+            image_attachments=[{"url": url, "content_type": "image/png"}],
+        )
+        group_memory.record_group_message(
+            "group",
+            "quoting-sender",
+            "引用图片",
+            message_id="quote-message",
+            reference_message_id="original-message",
+            image_attachments=[{
+                "url": url,
+                "content_type": "image/png",
+                "source": "引用消息图片",
+                "relation": "引用消息",
+            }],
+        )
+
+        images = group_memory.get_recent_group_image_attachments(
+            "group", current_message_id="quote-message"
+        )
+
+        self.assertEqual({image["source_user_id"] for image in images}, {"original-sender"})
+        quoted_preview = next(image for image in images if image["source"] == "引用消息图片")
+        self.assertEqual(quoted_preview["quoted_by_user_id"], "quoting-sender")
+
+    def test_quoted_image_without_original_author_stays_unknown(self):
+        """原消息不在缓存时保留未知来源，不把引用者填成图片发送者。"""
+        group_memory.record_group_message(
+            "group",
+            "quoting-sender",
+            "引用图片",
+            message_id="quote-message",
+            reference_message_id="missing-original",
+            image_attachments=[{
+                "url": "https://multimedia.nt.qq.com.cn/download?token=hidden",
+                "content_type": "image/png",
+                "source": "引用消息图片",
+                "relation": "引用消息",
+            }],
+        )
+
+        images = group_memory.get_recent_group_image_attachments(
+            "group", current_message_id="quote-message"
+        )
+
+        self.assertEqual(images[0]["source_message_id"], "missing-original")
+        self.assertEqual(images[0]["source_user_id"], "")
+        self.assertEqual(images[0]["quoted_by_user_id"], "quoting-sender")
 
 
 if __name__ == "__main__":

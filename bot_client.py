@@ -496,7 +496,19 @@ async def _agent_reply_text(
         current_message_received_at=received_at,
     )
     if not file_attachments:
-        file_attachments = extract_file_attachments(message)
+        current_message_id = str(getattr(message, "id", "") or "")
+        file_attachments = [
+            {
+                **attachment,
+                "message_id": attachment.get("source_message_id") or current_message_id,
+                "user_id": attachment.get("source_user_id") or user_id,
+                "source_message_id": attachment.get("source_message_id") or current_message_id,
+                "source_user_id": attachment.get("source_user_id") or user_id,
+                "carrier_message_id": current_message_id,
+                "carrier_user_id": user_id,
+            }
+            for attachment in extract_file_attachments(message)
+        ]
     file_inputs, skipped_files = await read_file_attachments(file_attachments, getattr(message, "_api", None))
     _log.info(
         "Agent 文件输入状态: group=%s message=%s attachments=%d downloaded=%d skipped=%d",

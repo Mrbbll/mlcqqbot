@@ -176,7 +176,22 @@ def get_recent_group_messages(
             "image_count": len(message.image_attachments) + int(bool(message.emoji)),
             "reference_message_id": message.reference_message_id,
             "emoji": dict(message.emoji) if message.emoji else None,
-            "files": [{"filename": item["filename"], "size": item["size"]} for item in message.file_attachments],
+            "images": [
+                {
+                    "source": item.get("source") or "消息附件",
+                    **_attachment_context(item, message, group_messages),
+                }
+                for item in message.image_attachments
+            ],
+            "files": [
+                {
+                    "filename": item["filename"],
+                    "size": item["size"],
+                    "source": item.get("source") or "消息附件",
+                    **_attachment_context(item, message, group_messages),
+                }
+                for item in message.file_attachments
+            ],
         }
         for message in recent_messages
     ]
@@ -242,12 +257,12 @@ def get_recent_group_image_attachments(
                 relation = "引用消息"
             else:
                 relation = "历史消息"
+            provenance = _attachment_provenance(attachment, message, group_messages)
             image_records.append(
                 {
                     **attachment,
-                    "message_id": message.message_id,
-                    "user_id": message.user_id,
-                    "message_content": message.content,
+                    **provenance,
+                    "message_content": provenance["source_message_content"],
                     "relation": relation,
                 }
             )
@@ -309,11 +324,26 @@ def get_recent_group_file_attachments(
             ),
             [],
         )
-    return [
-        {**attachment, "message_id": item.message_id}
-        for item in selected
-        for attachment in item.file_attachments
-    ]
+    attachments = []
+    for item in selected:
+        if current_message_id and item.message_id == current_message_id:
+            message_relation = "当前消息"
+        elif _matches_reference(item, referenced_ids):
+            message_relation = "引用消息"
+        else:
+            message_relation = "历史消息"
+        for attachment in item.file_attachments:
+            relation = (
+                "引用消息"
+                if str(attachment.get("source") or "").startswith("引用消息")
+                else message_relation
+            )
+            attachments.append({
+                **attachment,
+                **_attachment_provenance(attachment, item, records),
+                "relation": relation,
+            })
+    return attachments
 
 
 def _is_image_attachment(attachment: dict[str, Any]) -> bool:
@@ -336,6 +366,75 @@ def _normalize_image_attachment(attachment: dict[str, Any]) -> dict[str, Any]:
         "size": normalized_size,
         "source": str(attachment.get("source") or "消息附件"),
         "relation": str(attachment.get("relation") or ""),
+        "source_message_id": str(
+            attachment.get("source_message_id") or attachment.get("message_id") or ""
+        ),
+        "source_user_id": str(
+            attachment.get("source_user_id") or attachment.get("user_id") or ""
+        ),
+    }
+
+
+def _attachment_provenance(
+    attachment: dict[str, Any],
+    message: _GroupMessage,
+    messages: Iterable[_GroupMessage],
+) -> dict[str, Any]:
+    """绑定附件来源和承载消息；引用附件缺作者时不冒用引用者 ID。"""
+    is_quoted_attachment = str(attachment.get("source") or "").startswith("引用消息")
+    source_message_id = str(attachment.get("source_message_id") or "").strip()
+    source_user_id = str(attachment.get("source_user_id") or "").strip()
+    source_message_content = ""
+    reference = None
+    if is_quoted_attachment and message.reference_message_id:
+        reference_ids = {message.reference_message_id}
+        reference = next(
+            (
+                candidate
+                for candidate in messages
+                if candidate is not message and _matches_reference(candidate, reference_ids)
+            ),
+            None,
+        )
+    if is_quoted_attachment:
+        source_message_id = (
+            source_message_id
+            or (reference.message_id if reference else "")
+            or message.reference_message_id
+        )
+        source_user_id = source_user_id or (
+            reference.user_id if reference and reference.user_id != "未知用户" else ""
+        )
+        source_message_content = reference.content if reference else ""
+    else:
+        source_message_id = source_message_id or message.message_id
+        source_user_id = source_user_id or (
+            message.user_id if message.user_id != "未知用户" else ""
+        )
+        source_message_content = message.content
+    return {
+        "message_id": source_message_id,
+        "user_id": source_user_id,
+        "source_message_id": source_message_id,
+        "source_user_id": source_user_id,
+        "source_message_content": source_message_content,
+        "carrier_message_id": message.message_id,
+        "carrier_user_id": message.user_id,
+        "quoted_by_user_id": message.user_id if is_quoted_attachment else "",
+    }
+
+
+def _attachment_context(
+    attachment: dict[str, Any],
+    message: _GroupMessage,
+    messages: Iterable[_GroupMessage],
+) -> dict[str, Any]:
+    """为群历史生成精简的附件来源索引，不重复嵌入消息正文。"""
+    provenance = _attachment_provenance(attachment, message, messages)
+    return {
+        "source_message_id": provenance["source_message_id"],
+        "source_user_id": provenance["source_user_id"] or None,
+        "quoted_by_user_id": provenance["quoted_by_user_id"] or None,
     }
 
 
