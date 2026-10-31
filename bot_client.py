@@ -18,6 +18,8 @@ from features.agent.file_input import extract_file_attachments, read_file_attach
 from external_tools.storage.group_memory import get_recent_group_file_attachments
 from features.agent.emojipic import load_emoji_library
 from features.agent.reply_memory import record_bot_reply
+from features.private_agent import get_private_context, record_private_message
+from features.security.permissions import check_superuser
 from features.agent.vision import (
     download_image_attachments,
     extract_image_attachments,
@@ -361,6 +363,7 @@ async def handle_command_message(
         emoji_image_path = None
         emoji_metadata = None
         file_paths = ()
+        private_agent_reply = False
         if force_agent:
             reply_text = await _agent_reply_text(
                 message, user_id, group_id, received_at=received_at
@@ -387,6 +390,22 @@ async def handle_command_message(
                         received_at=received_at,
                         allow_silent_reply=not is_at_message,
                     )
+            elif not reply_text and not is_group and check_superuser(user_id):
+                private_context = get_private_context(user_id)
+                record_private_message(
+                    user_id,
+                    "user",
+                    message.content or "",
+                    message_id=str(getattr(message, "id", "") or ""),
+                )
+                reply_text = await _agent_reply_text(
+                    message,
+                    user_id,
+                    group_id,
+                    conversation_context=private_context,
+                    private_chat=True,
+                )
+                private_agent_reply = True
         if isinstance(reply_text, AgentReply):
             emoji_image_path = reply_text.emoji_image_path
             emoji_metadata = reply_text.emoji_metadata
@@ -408,6 +427,8 @@ async def handle_command_message(
             reply_result = await message.reply(**payload)
             if is_group and group_id:
                 record_bot_reply(group_id, reply_text, reply_result)
+            elif private_agent_reply:
+                record_private_message(user_id, "assistant", reply_text)
 
         if emoji_image_path is not None:
             if not is_group or not group_id:
@@ -433,7 +454,9 @@ async def handle_command_message(
                         group_id,
                         getattr(message, "id", ""),
                     )
-        if file_paths:
+        if file_paths and (not is_group or not group_id):
+            _log.warning("跳过 Agent 文件发送：当前消息没有群聊上下文")
+        elif file_paths:
             # 为文字、表情包及文件使用不同序号，上传不占用回复序号。
             sequence = 1 + bool(reply_text) + (emoji_image_path is not None)
             for file_path in file_paths[:1]:
@@ -464,6 +487,8 @@ async def _agent_reply_text(
     *,
     received_at: float | None = None,
     allow_silent_reply: bool = False,
+    conversation_context: list[dict] | None = None,
+    private_chat: bool = False,
 ) -> str | AgentReply:
     """准备上下文并调用 Agent；仅被动抽样消息允许按提示词静默。"""
     _log.info(
@@ -475,20 +500,41 @@ async def _agent_reply_text(
     question = message.content or ""
     tool_question = question
     if not question:
-        question = "请结合最近的群聊内容参与对话。"
-    group_context = get_recent_group_messages(
-        group_id,
-        exclude_message_id=str(getattr(message, "id", "") or ""),
-        referenced_message_ids=[_group_reference_id(message)],
-        current_message_received_at=received_at,
-    )
+        question = (
+            "请结合最近的私聊内容回复。"
+            if private_chat
+            else "请结合最近的群聊内容参与对话。"
+        )
+    if conversation_context is not None:
+        group_context = conversation_context
+    elif group_id:
+        group_context = get_recent_group_messages(
+            group_id,
+            exclude_message_id=str(getattr(message, "id", "") or ""),
+            referenced_message_ids=[_group_reference_id(message)],
+            current_message_received_at=received_at,
+        )
+    else:
+        group_context = []
+    current_message_id = str(getattr(message, "id", "") or "")
     image_attachments = get_recent_group_image_attachments(
         group_id,
-        current_message_id=str(getattr(message, "id", "") or ""),
+        current_message_id=current_message_id,
         referenced_message_ids=[_group_reference_id(message)],
         current_message_received_at=received_at,
-    )
-    current_message_id = str(getattr(message, "id", "") or "")
+    ) if group_id else [
+        {
+            **attachment,
+            "relation": "当前消息",
+            "source_message_id": current_message_id,
+            "source_user_id": user_id,
+            "message_id": current_message_id,
+            "user_id": user_id,
+            "carrier_message_id": current_message_id,
+            "carrier_user_id": user_id,
+        }
+        for attachment in extract_image_attachments(message)
+    ]
     file_attachments = get_recent_group_file_attachments(
         group_id, current_message_id=current_message_id,
         reference_message_id=_group_reference_id(message),
@@ -556,6 +602,7 @@ async def _agent_reply_text(
             tool_question=tool_question,
             current_message_has_image=current_image_count > 0,
             current_message_image_count=current_image_count,
+            private_chat=private_chat,
         )
     if isinstance(response, AgentReply):
         if response.text.strip() == _AGENT_SILENT_REPLY_MARKER:
