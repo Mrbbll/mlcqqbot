@@ -24,3 +24,4 @@ tests/agent/*
 !tests/agent/test_file_delivery.py
 !tests/agent/web_search/
 !tests/agent/group_message_debug/
+!tests/agent/group_message_order/

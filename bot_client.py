@@ -127,7 +127,7 @@ async def handle_group_message(
     api=None,
     is_at_message: bool = False,
 ) -> None:
-    """先转发每条唯一群消息，再记录消息并尝试命令、Agent 和通知处理。"""
+    """先记录唯一群消息，再转发并尝试命令、Agent 和通知处理。"""
     received_at = monotonic()
     is_duplicate, state = _register_group_message(message, is_at_message)
     if is_duplicate:
@@ -150,11 +150,6 @@ async def handle_group_message(
             )
             state["status"] = "handled"
         return
-
-    try:
-        await forward_group_message_to_game(message)
-    except Exception:
-        _log.exception("转发 QQ 群消息到游戏失败")
 
     user_id = _group_user_id(message)
     group_id = getattr(message, "group_openid", "") or ""
@@ -217,6 +212,11 @@ async def handle_group_message(
         message_index=message_index,
         received_at=received_at,
     )
+    try:
+        await forward_group_message_to_game(message)
+    except Exception:
+        _log.exception("转发 QQ 群消息到游戏失败")
+
     handled = await handle_command_message(
         message,
         user_id,
