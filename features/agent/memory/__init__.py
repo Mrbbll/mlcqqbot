@@ -11,7 +11,7 @@ import requests
 from config import AGENT_EMBEDDING_API_KEY, AGENT_EMBEDDING_MODEL, AGENT_EMBEDDING_URL, PROJECT_ROOT
 
 
-DB_PATH = Path(PROJECT_ROOT) / "data" / "agent_memory_qdrant"
+DB_PATH = Path(PROJECT_ROOT).parent / "agent_memory_qdrant"
 COLLECTION = "memories"
 DELETE_THRESHOLD = 0.85
 DELETE_BATCH_SIZE = 256
