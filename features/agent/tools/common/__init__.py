@@ -95,14 +95,14 @@ class ToolResult:
 
 @dataclass(frozen=True, slots=True)
 class ToolSpec:
-    """一次绑定工具名称、说明、参数模型、处理函数及权限要求。"""
+    """绑定工具信息；注册汇总时由配置覆盖管理员权限。"""
 
     name: str
     description: str
     args_model: type[ToolArgs]
     handler: Callable[[Any, ToolContext], ToolResult]
     requires_superuser: bool = False
-    permission_denied_message: str = "服务器文件和命令工具仅限超级用户使用。"
+    permission_denied_message: str = "该工具仅限超级用户使用。"
 
     @property
     def schema(self) -> dict:

@@ -494,3 +494,34 @@ def self_muzzle_success(minutes: int) -> str:
         "messages/muzzle/success.md",
         {"minutes": minutes},
     )
+
+
+# ==================== Bilibili 直播通知 ====================
+
+
+def bilibili_live_started(
+    uname: str,
+    title: str,
+    room_id: int,
+    cover_url: str,
+) -> str:
+    """从独立模板生成 Bilibili 开播通知文案。"""
+    return render_template(
+        "messages/bilibili/live_started.md",
+        {
+            "uname": escape_markdown(uname),
+            "title": escape_markdown(title),
+            "room_id": room_id,
+            "cover_image": (
+                f"![直播间封面]({cover_url})" if cover_url else ""
+            ),
+        },
+    )
+
+
+def bilibili_live_ended(uname: str) -> str:
+    """从独立模板生成 Bilibili 下播通知文案。"""
+    return render_template(
+        "messages/bilibili/live_ended.md",
+        {"uname": escape_markdown(uname)},
+    )

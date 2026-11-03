@@ -7,12 +7,13 @@ import httpx
 
 @dataclass(frozen=True)
 class LiveRoomInfo:
-    """保存通知需要的直播间状态、主播名和标题。"""
+    """保存通知需要的直播间状态、主播名、标题和封面地址。"""
 
     room_id: int
     is_live: bool
     uname: str
     title: str
+    cover_url: str = ""
 
 
 class BilibiliApiClient:
@@ -68,4 +69,5 @@ class BilibiliApiClient:
             is_live=room["live_status"] == 1,
             uname=str(room.get("uname") or "主播"),
             title=str(room.get("title") or "（无标题）"),
+            cover_url=str(room.get("cover") or ""),
         )

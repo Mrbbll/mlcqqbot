@@ -2,9 +2,11 @@
 
 import json
 import logging
+from dataclasses import replace
 
 from pydantic import ValidationError
 
+from config import AGENT_TOOL_SUPERUSER_ONLY
 from features.security import permissions
 from features.agent.tools.common import ToolContext, ToolResult
 from features.agent.tools.command import TOOLS as COMMAND_TOOLS
@@ -14,6 +16,7 @@ from features.agent.tools.discovery import TOOLS as DISCOVERY_TOOLS
 from features.agent.tools.file_delivery import TOOLS as FILE_DELIVERY_TOOLS
 from features.agent.tools.mention import TOOLS as MENTION_TOOLS
 from features.agent.tools.web_search import TOOLS as WEB_SEARCH_TOOLS
+from features.agent.tools.memory import TOOLS as MEMORY_TOOLS
 
 
 TOOL_SPECS = (
@@ -24,11 +27,22 @@ TOOL_SPECS = (
     *FILE_DELIVERY_TOOLS,
     *MENTION_TOOLS,
     *WEB_SEARCH_TOOLS,
+    *MEMORY_TOOLS,
 )
-TOOL_REGISTRY = {tool.name: tool for tool in TOOL_SPECS}
-ALL_TOOL_SCHEMAS = [tool.schema for tool in TOOL_SPECS]
-if len(TOOL_REGISTRY) != len(TOOL_SPECS):
+if len({tool.name for tool in TOOL_SPECS}) != len(TOOL_SPECS):
     raise ValueError("Agent 工具名称不能重复。")
+_registered_names = {tool.name for tool in TOOL_SPECS}
+_missing = _registered_names - set(AGENT_TOOL_SUPERUSER_ONLY)
+_unknown = set(AGENT_TOOL_SUPERUSER_ONLY) - _registered_names
+if _missing or _unknown:
+    raise ValueError(f"Agent 工具权限配置不匹配：缺少 {sorted(_missing)}，未注册 {sorted(_unknown)}。")
+if any(type(value) is not bool for value in AGENT_TOOL_SUPERUSER_ONLY.values()):
+    raise ValueError("Agent 工具权限配置必须为布尔值。")
+TOOL_REGISTRY = {
+    tool.name: replace(tool, requires_superuser=AGENT_TOOL_SUPERUSER_ONLY[tool.name])
+    for tool in TOOL_SPECS
+}
+ALL_TOOL_SCHEMAS = [tool.schema for tool in TOOL_REGISTRY.values()]
 
 
 def visible_tools(user_id: str) -> list[dict]:

@@ -13,6 +13,7 @@ mlcbot.log*
 *.bin
 *.html
 data/*.sqlite3*
+/data/agent_memory_qdrant/
 .claude
 tests/
 !tests/
@@ -25,3 +26,4 @@ tests/agent/*
 !tests/agent/web_search/
 !tests/agent/group_message_debug/
 !tests/agent/group_message_order/
+!tests/agent/test_memory_rag.py

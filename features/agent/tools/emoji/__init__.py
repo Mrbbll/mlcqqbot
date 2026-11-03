@@ -248,7 +248,7 @@ TOOLS = (
     ToolSpec("send_emoji_image", "选择一张收藏表情包待发送，优先用真实 image_id；换图设 replace_previous=true，省略 gif_only 可继承上次条件。", SendEmojiArgs, select_emoji),
     ToolSpec(
         "delete_emoji_image",
-        "超级用户明确要求删除收藏时，按完整 ID 删除一张图片；必须来自本轮浏览/搜索结果或当前消息明确提供的 ID。若描述对应多个候选，先询问，不得猜测。",
+        "用户明确要求删除收藏时，按完整 ID 删除一张图片；必须来自本轮浏览/搜索结果或当前消息明确提供的 ID。若描述对应多个候选，先询问，不得猜测。",
         DeleteEmojiArgs,
         delete_emoji,
         True,

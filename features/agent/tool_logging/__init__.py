@@ -69,8 +69,8 @@ def record_tool_call(*, run_id: str, call_id: str, group_id: str, user_id: str,
             "time": datetime.now().astimezone().isoformat(),
             "run_id": run_id, "call_id": call_id, "group_id": group_id, "user_id": user_id,
             "tool": str(name)[:100], "status": status, "duration_ms": duration_ms,
-            "repeat_count": repeat_count, "arguments": _safe_arguments(arguments),
-            "result_chars": len(result), "result_preview": _redact_text(result),
+            "repeat_count": repeat_count, "arguments": ({"redacted": True} if name in {"add_memory", "search_memory", "delete_memory"} else _safe_arguments(arguments)),
+            "result_chars": len(result), "result_preview": ("[记忆内容已隐藏]" if name in {"add_memory", "search_memory", "delete_memory"} else _redact_text(result)),
         }
         _get_logger().info(json.dumps(entry, ensure_ascii=False))
     except (OSError, ValueError, TypeError):

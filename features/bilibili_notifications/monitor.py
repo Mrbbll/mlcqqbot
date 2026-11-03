@@ -14,7 +14,10 @@ from config import (
     BILIBILI_ROOM_IDS,
 )
 from external_tools.bilibili.client import BilibiliApiClient, LiveRoomInfo
+from features.bilibili_notifications.cover_image import normalize_room_cover_url
 from features.passive_notifications.context import get_recent_message, next_reply_sequence
+from presentation import messages
+from presentation.markdown import markdown_payload
 
 
 _log = logging.getLogger("mlcbot")
@@ -31,11 +34,13 @@ send_lock = asyncio.Lock()
 def format_notification(room: LiveRoomInfo) -> str:
     """保留旧项目的开播和下播通知文案。"""
     if room.is_live:
-        return (
-            f"{room.uname} 开播啦！\n标题：{room.title}\n"
-            f"链接：https://live.bilibili.com/{room.room_id}"
+        return messages.bilibili_live_started(
+            room.uname,
+            room.title,
+            room.room_id,
+            normalize_room_cover_url(room.cover_url),
         )
-    return f"{room.uname} 的直播间已下播！"
+    return messages.bilibili_live_ended(room.uname)
 
 
 async def flush_pending_notifications(group_id: str) -> None:
@@ -52,7 +57,7 @@ async def flush_pending_notifications(group_id: str) -> None:
             return
         notification_after[group_id] = monotonic() + _NOTIFICATION_INTERVAL
         try:
-            await message.reply(msg_type=0, content=queue[0], msg_seq=sequence)
+            await message.reply(**markdown_payload(queue[0]), msg_seq=sequence)
         except Exception as exc:
             _log.warning("[bilibili] 群 %s 回复失败：%s", group_id, type(exc).__name__)
             return
@@ -77,9 +82,11 @@ async def check_all() -> None:
             room = await client.get_room_info(room_id)
             previous = status.get(room_id)
             if previous is not None and previous != room.is_live:
-                text = format_notification(room)
+                notification = format_notification(room)
                 for group_id in dict.fromkeys(BILIBILI_NOTIFY_GROUPS):
-                    pending_notifications.setdefault(group_id, deque()).append(text)
+                    pending_notifications.setdefault(group_id, deque()).append(
+                        notification
+                    )
             status[room_id] = room.is_live
         except Exception as exc:
             _log.warning("[bilibili] 检查直播间 %s 失败：%s", room_id, type(exc).__name__)
