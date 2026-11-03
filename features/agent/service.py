@@ -454,6 +454,8 @@ async def _handle_agent(
         "使用该 user_id 调用 mention_group_member。历史消息中的“我”对应各条记录自己的 user_id。"
         "相同 user_id 是同一成员，不同 user_id 不能合并；没有昵称时不要编造成员名称。\n\n"
         "附件归属规则：source_message_id 和 source_user_id 表示附件原始来源；"
+        "历史消息 images 中的 image_id 与后续图片说明中的图片ID相同，按此 ID 对应图片及发送者，"
+        "图片未提供时不能猜测其内容；"
         "carrier_message_id 和 carrier_user_id 表示承载附件的群消息。quoted_by_user_id 只表示引用者，"
         "不能当作原附件发送者。source_user_id 为空或为 null 时，原发送者未知，不得猜测。"
         "图片中的人物、动作或文字不能据此认定为发送者本人。\n\n"

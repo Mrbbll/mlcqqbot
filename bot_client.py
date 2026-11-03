@@ -525,11 +525,9 @@ async def _agent_reply_text(
     ) if group_id else [
         {
             **attachment,
-            "relation": "当前消息",
-            "source_message_id": current_message_id,
-            "source_user_id": user_id,
-            "message_id": current_message_id,
-            "user_id": user_id,
+            "relation": attachment.get("relation") or "当前消息",
+            "source_message_id": attachment.get("source_message_id") or (current_message_id if not attachment.get("relation") else ""),
+            "source_user_id": attachment.get("source_user_id") or (user_id if not attachment.get("relation") else ""),
             "carrier_message_id": current_message_id,
             "carrier_user_id": user_id,
         }

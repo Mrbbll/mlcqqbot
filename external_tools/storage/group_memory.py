@@ -3,6 +3,7 @@ from collections import OrderedDict, deque
 from dataclasses import dataclass
 import time
 from typing import Any, Iterable
+from uuid import uuid4
 
 
 _MESSAGE_TTL_SECONDS = 10 * 60
@@ -51,7 +52,8 @@ def record_group_message(
     normalized_group_id = (group_id or "").strip()
     stored_content = content or ""
     normalized_images = tuple(
-        _normalize_image_attachment(attachment)
+        {**_normalize_image_attachment(attachment),
+         "image_id": str(attachment.get("image_id") or uuid4().hex)}
         for attachment in image_attachments
         if _is_image_attachment(attachment)
     )
@@ -382,6 +384,7 @@ def _attachment_provenance(
 ) -> dict[str, Any]:
     """绑定附件来源和承载消息；引用附件缺作者时不冒用引用者 ID。"""
     is_quoted_attachment = str(attachment.get("source") or "").startswith("引用消息")
+    is_forwarded_attachment = str(attachment.get("source") or "").startswith("转发消息")
     source_message_id = str(attachment.get("source_message_id") or "").strip()
     source_user_id = str(attachment.get("source_user_id") or "").strip()
     source_message_content = ""
@@ -406,7 +409,7 @@ def _attachment_provenance(
             reference.user_id if reference and reference.user_id != "未知用户" else ""
         )
         source_message_content = reference.content if reference else ""
-    else:
+    elif not is_forwarded_attachment:
         source_message_id = source_message_id or message.message_id
         source_user_id = source_user_id or (
             message.user_id if message.user_id != "未知用户" else ""
@@ -432,6 +435,7 @@ def _attachment_context(
     """为群历史生成精简的附件来源索引，不重复嵌入消息正文。"""
     provenance = _attachment_provenance(attachment, message, messages)
     return {
+        **({"image_id": attachment["image_id"]} if attachment.get("image_id") else {}),
         "source_message_id": provenance["source_message_id"],
         "source_user_id": provenance["source_user_id"] or None,
         "quoted_by_user_id": provenance["quoted_by_user_id"] or None,

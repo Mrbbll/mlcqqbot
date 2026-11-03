@@ -1,12 +1,14 @@
 """验证 QQ 引用索引和图片附件进入群记忆及 Agent 图片输入链路。"""
 
 from types import SimpleNamespace
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
 from external_tools.qq.botpy_compat import get_group_message_indices
 from external_tools.storage import group_memory
-from features.agent.vision.image_input import _image_description, extract_image_attachments
+from features.agent.vision.image_input import _download_images_sync, _image_description, extract_image_attachments
 
 
 class QuotedMediaTests(unittest.TestCase):
@@ -166,6 +168,44 @@ class QuotedMediaTests(unittest.TestCase):
         self.assertEqual({image["source_user_id"] for image in images}, {"original-sender"})
         quoted_preview = next(image for image in images if image["source"] == "引用消息图片")
         self.assertEqual(quoted_preview["quoted_by_user_id"], "quoting-sender")
+
+    def test_image_ids_link_history_to_downloads_after_failure(self):
+        """图片下载失败后，剩余图片仍通过 ID 对应各自的消息和发送者。"""
+        for message_id, sender, urls in (
+            ("m1", "alice", ["https://multimedia.nt.qq.com.cn/a", "https://multimedia.nt.qq.com.cn/b"]),
+            ("m2", "bob", ["https://multimedia.nt.qq.com.cn/c"]),
+        ):
+            group_memory.record_group_message(
+                "group", sender, "图片", message_id=message_id,
+                image_attachments=[{"url": url, "content_type": "image/png"} for url in urls],
+            )
+        history = group_memory.get_recent_group_messages("group")
+        attachments = group_memory.get_recent_group_image_attachments("group")
+        history_images = [image for message in history for image in message["images"]]
+        self.assertEqual([image["image_id"] for image in history_images],
+                         [image["image_id"] for image in attachments])
+        self.assertEqual([image["source_user_id"] for image in history_images], ["alice", "alice", "bob"])
+        self.assertEqual(len({image["image_id"] for image in history_images}), 3)
+        with TemporaryDirectory() as directory, patch(
+            "features.agent.vision.image_input._download_image",
+            side_effect=[ValueError("failed"), "data:image/png;base64,Yg==", "data:image/png;base64,Yw=="],
+        ):
+            inputs, skipped = _download_images_sync(attachments, "auth", Path(directory), "group")
+        self.assertEqual(len(skipped), 1)
+        self.assertEqual([item["image_id"] for item in inputs], [item["image_id"] for item in attachments[1:]])
+        for item in inputs:
+            self.assertIn(item["image_id"], item["description"])
+            self.assertIn(item["source_user_id"], item["description"])
+
+    def test_forwarded_image_without_original_author_stays_unknown(self):
+        """转发载荷未提供原发送者时不把转发者当成图片作者。"""
+        group_memory.record_group_message(
+            "group", "carrier", "转发", message_id="forward",
+            image_attachments=[{"url": "https://multimedia.nt.qq.com.cn/a", "content_type": "image/png", "source": "转发消息图片"}],
+        )
+        image = group_memory.get_recent_group_image_attachments("group")[0]
+        self.assertEqual(image["source_user_id"], "")
+        self.assertEqual(image["carrier_user_id"], "carrier")
 
     def test_quoted_image_without_original_author_stays_unknown(self):
         """原消息不在缓存时保留未知来源，不把引用者填成图片发送者。"""

@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import requests
 
@@ -143,6 +144,7 @@ def _append_image_attachment(
     seen_urls.add(dedupe_key)
     attachments.append(
         {
+            "image_id": uuid4().hex,
             "url": normalized_url,
             "content_type": content_type,
             "filename": str(_attachment_field(attachment, "filename") or ""),
@@ -373,6 +375,7 @@ def _download_images_sync(
             image_inputs.append(
                 {
                     "data_url": image_data_url,
+                    "image_id": str(_attachment_field(attachment, "image_id") or ""),
                     "description": _image_description(attachment),
                     "source_group_id": group_id,
                     "source_message_id": str(
@@ -403,6 +406,7 @@ def _download_images_sync(
 def _image_description(attachment: Any) -> str:
     """为图片输入生成不含下载地址的消息来源说明。"""
     fields = (
+        ("图片ID", _attachment_field(attachment, "image_id") or "未知"),
         ("消息关系", _attachment_field(attachment, "relation")),
         ("图片来源", _attachment_field(attachment, "source")),
         (
