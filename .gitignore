@@ -16,14 +16,6 @@ data/*.sqlite3*
 /data/agent_memory_qdrant/
 .claude
 tests/
-!tests/
 tests/*
-!tests/agent/
 tests/agent/*
-!tests/agent/test_quoted_media.py
-!tests/agent/test_file_input.py
-!tests/agent/test_file_delivery.py
-!tests/agent/web_search/
-!tests/agent/group_message_debug/
-!tests/agent/group_message_order/
-!tests/agent/test_memory_rag.py
+

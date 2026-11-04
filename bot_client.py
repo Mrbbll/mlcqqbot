@@ -60,7 +60,7 @@ install_group_message_parser_compat()
 _log = logging.getLogger("mlcbot")
 _ERROR_REPLY = markdown_payload(messages.PROCESSING_ERROR)
 _GROUP_MESSAGE_DEDUP_LIMIT = 4096
-_AGENT_AUTO_REPLY_PROBABILITY = 0.05
+_AGENT_AUTO_REPLY_PROBABILITY = 0.01
 _AGENT_SILENT_REPLY_MARKER = "[[NO_REPLY]]"
 _AT_MENTION_PATTERN = re.compile(r"<@!?(\w+)>")
 _MEMBER_OPENID_PATTERN = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
@@ -503,7 +503,7 @@ async def _agent_reply_text(
         question = (
             "请结合最近的私聊内容回复。"
             if private_chat
-            else "请结合最近的群聊内容参与对话。"
+            else "[当前消息没有文字内容]"
         )
     if conversation_context is not None:
         group_context = conversation_context
@@ -601,6 +601,7 @@ async def _agent_reply_text(
             current_message_has_image=current_image_count > 0,
             current_message_image_count=current_image_count,
             private_chat=private_chat,
+            allow_silent_reply=allow_silent_reply,
         )
     if isinstance(response, AgentReply):
         if response.text.strip() == _AGENT_SILENT_REPLY_MARKER:
