@@ -205,8 +205,9 @@ def get_recent_group_image_attachments(
     current_message_id: str = "",
     referenced_message_ids: Iterable[str] = (),
     current_message_received_at: float | None = None,
+    context_message_ids: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """返回当前消息之前及明确引用的图片，供 Agent 请求按需下载。"""
+    """返回当前及引用图片；提供上下文消息 ID 时仅补充入选历史图片。"""
     normalized_group_id = (group_id or "").strip()
     group_messages = _messages_by_group.get(normalized_group_id)
     if group_messages is None:
@@ -240,8 +241,16 @@ def get_recent_group_image_attachments(
     if current_message and current_message.reference_message_id:
         referenced_ids.add(current_message.reference_message_id)
     image_records: list[dict[str, Any]] = []
+    selected_ids = set(context_message_ids) if context_message_ids is not None else None
     for message in group_messages:
         is_referenced = _matches_reference(message, referenced_ids)
+        if (
+            selected_ids is not None
+            and message.message_id != current_id
+            and not is_referenced
+            and message.message_id not in selected_ids
+        ):
+            continue
         if (
             context_received_at is not None
             and message.received_at > context_received_at

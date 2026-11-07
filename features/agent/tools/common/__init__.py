@@ -33,7 +33,6 @@ class ToolContext:
     mentionable_user_ids: set[str] = field(default_factory=set)
     pending_mentions: list[str] = field(default_factory=list)
     available_emoji_ids: set[str] = field(default_factory=set)
-    emoji_delete_attempted: bool = False
     web_search_results: dict[str, dict] = field(default_factory=dict)
 
 

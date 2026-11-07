@@ -10,6 +10,7 @@ class AddMemoryArgs(ToolArgs):
     """定义需要保存的单条长期记忆。"""
 
     content: NonBlank = Field(max_length=2000, description="当前发言者提供的有长期价值的信息，标明其为陈述而非未经验证的事实。")
+    pinned: bool = Field(default=False, description="仅当用户明确要求记住并长期遵守的重要规则时为 true；每次回答自动完整加载，不受 8 条语义召回限制。普通信息为 false。")
 
 
 class SearchMemoryArgs(ToolArgs):
@@ -45,7 +46,7 @@ def _failure(exc: Exception) -> ToolResult:
 def add_memory(args: AddMemoryArgs, context: ToolContext) -> ToolResult:
     """只使用宿主提供的当前发送者作为新记忆的归属。"""
     try:
-        record = memory.add(context.user_id, args.content, context.timeout_seconds)
+        record = memory.add(context.user_id, args.content, context.timeout_seconds, pinned=args.pinned)
         return ToolResult(True, message="记忆已保存。", data=record)
     except (memory.MemoryError, OSError, ValueError) as exc:
         return _failure(exc)

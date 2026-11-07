@@ -19,20 +19,6 @@ from features.agent.tools.common import NonBlank, ToolArgs, ToolContext, ToolRes
 
 
 MAX_SAVES_PER_REPLY = 3
-_DELETE_VERB_PATTERN = re.compile(r"(?:删除|删掉|删去|删了|删|移除|清除|清掉|取消收藏)")
-_NEGATED_DELETE_PATTERN = re.compile(
-    r"(?:不要|别|不必|不需要|不想|禁止|不准|不允许|先别|暂不)\s*"
-    r"(?:再\s*)?(?:把.{0,8})?(?:删除|删掉|删去|删了|删|移除|清除|清掉|取消收藏)"
-)
-_DELETE_DISCUSSION_PATTERN = re.compile(
-    r"(?:能否|能不能|可不可以|是否|怎么|如何|要不要|为什么|为何)"
-    r"[^，。！？!?；;\n]{0,20}(?:删除|删掉|删去|删了|删|移除|清除|清掉|取消收藏)|"
-    r"(?:删除|删掉|删去|删了|删|移除|清除|清掉|取消收藏)"
-    r"[^，。！？!?；;\n]{0,12}(?:吗|可以吗|能吗)\s*$"
-)
-_DELETE_HELP_REQUEST_PATTERN = re.compile(
-    r"(?:帮我|帮忙|麻烦|请).{0,8}(?:删除|删掉|删去|删了|删|移除|清除|清掉|取消收藏)"
-)
 
 
 class SaveEmojiArgs(ToolArgs):
@@ -186,31 +172,13 @@ class DeleteEmojiArgs(ToolArgs):
     )
 
 
-def user_requested_emoji_deletion(question: str) -> bool:
-    """仅把当前消息中的明确删除动作视为删除授权，排除否定和能力询问。"""
-    clauses = re.split(r"[，,。！？!?；;\n]", question or "")
-    for clause in clauses:
-        if not _DELETE_VERB_PATTERN.search(clause):
-            continue
-        if _NEGATED_DELETE_PATTERN.search(clause):
-            continue
-        if _DELETE_DISCUSSION_PATTERN.search(clause) and not _DELETE_HELP_REQUEST_PATTERN.search(clause):
-            continue
-        return True
-    return False
-
-
 def _image_id_was_requested(image_id: str, question: str) -> bool:
     """确认用户当前消息直接提供了完整 ID，而不是从旧对话继承。"""
     return bool(re.search(rf"(?<![0-9a-fA-F]){re.escape(image_id)}(?![0-9a-fA-F])", question or "", re.IGNORECASE))
 
 
 def delete_emoji(args: DeleteEmojiArgs, context: ToolContext) -> ToolResult:
-    """删除本轮已确认或用户当前点名的唯一收藏，不做模糊名称匹配。"""
-    if context.emoji_delete_attempted:
-        return ToolResult(False, "delete_limit", "本轮最多删除一张收藏表情包。")
-    if not user_requested_emoji_deletion(context.question):
-        return ToolResult(False, "delete_not_requested", "当前消息没有明确要求删除收藏表情包。")
+    """按完整 ID 逐张删除已确认收藏，允许本轮连续调用，不做模糊名称匹配。"""
     if (
         args.image_id not in context.available_emoji_ids
         and not _image_id_was_requested(args.image_id, context.question)
@@ -219,7 +187,6 @@ def delete_emoji(args: DeleteEmojiArgs, context: ToolContext) -> ToolResult:
     if any(item.get("id") == args.image_id for item in context.pending_emoji_images):
         return ToolResult(False, "emoji_pending_delivery", "该表情已排入本轮发送队列，不能同时删除。")
 
-    context.emoji_delete_attempted = True
     try:
         deleted = delete_emoji_image(args.image_id)
     except EmojiImageIdAmbiguousError:
@@ -248,7 +215,7 @@ TOOLS = (
     ToolSpec("send_emoji_image", "选择一张收藏表情包待发送，优先用真实 image_id；换图设 replace_previous=true，省略 gif_only 可继承上次条件。", SendEmojiArgs, select_emoji),
     ToolSpec(
         "delete_emoji_image",
-        "用户明确要求删除收藏时，按完整 ID 删除一张图片；必须来自本轮浏览/搜索结果或当前消息明确提供的 ID。若描述对应多个候选，先询问，不得猜测。",
+        "根据用户当前请求及对话上下文理解删除意图，支持继续删除、按类别或全部匹配删除；每次用真实完整 ID 删除一张，同轮可连续调用。ID 来自本轮浏览/搜索或当前消息。范围清楚时直接执行，仅有歧义时询问，无需用户复述固定句式。",
         DeleteEmojiArgs,
         delete_emoji,
         True,

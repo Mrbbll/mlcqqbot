@@ -377,6 +377,8 @@ def _download_images_sync(
                     "data_url": image_data_url,
                     "image_id": str(_attachment_field(attachment, "image_id") or ""),
                     "description": _image_description(attachment),
+                    "relation": str(_attachment_field(attachment, "relation") or ""),
+                    "carrier_message_id": str(_attachment_field(attachment, "carrier_message_id") or ""),
                     "source_group_id": group_id,
                     "source_message_id": str(
                         _attachment_field(attachment, "source_message_id")

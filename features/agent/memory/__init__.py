@@ -47,8 +47,8 @@ def _embedding(text: str, timeout: float) -> list[float]:
         raise MemoryError("embedding_unavailable") from exc
 
 
-def _store(dimension: int):
-    """复用进程内本地客户端，并验证单个集合的向量维度。调用方须持锁。"""
+def _store(dimension: int | None = None):
+    """复用本地客户端；提供维度时验证向量集合，调用方须持锁。"""
     global _client
     try:
         from qdrant_client import QdrantClient, models
@@ -57,6 +57,8 @@ def _store(dimension: int):
             DB_PATH.mkdir(parents=True, exist_ok=True)
             # Agent 工具在线程池执行；所有客户端访问均由模块锁串行化。
             _client = QdrantClient(path=str(DB_PATH), force_disable_check_same_thread=True)
+        if dimension is None:
+            return _client, models
         if not _client.collection_exists(COLLECTION):
             _client.create_collection(COLLECTION, vectors_config=models.VectorParams(size=dimension, distance=models.Distance.COSINE))
         config = _client.get_collection(COLLECTION).config.params.vectors
@@ -79,34 +81,69 @@ def _filter(models, user_id: str = ""):
     return models.Filter(must=conditions)
 
 
-def add(user_id: str, content: str, timeout: float) -> dict:
-    """将当前发言者的一条记忆及向量保存在统一集合中。"""
+def add(user_id: str, content: str, timeout: float, pinned: bool = False) -> dict:
+    """保存本人记忆及固定规则标记，旧调用默认仍为普通记忆。"""
     if not user_id.strip():
         raise ValueError("missing user")
     vector = _embedding(content, timeout)
     record = {"user_id": user_id, "content": content, "created_at": datetime.now(timezone.utc).isoformat(),
-              "model": AGENT_EMBEDDING_MODEL}
+              "model": AGENT_EMBEDDING_MODEL, "pinned": pinned}
     with _lock:
         client, models = _store(len(vector))
         try:
             client.upsert(COLLECTION, points=[models.PointStruct(id=str(uuid4()), vector=vector, payload=record)], wait=True)
         except Exception as exc:
             raise MemoryError("memory_store_unavailable") from exc
-    return {key: record[key] for key in ("user_id", "content", "created_at")}
+    return {key: record[key] for key in ("user_id", "content", "created_at", "pinned")}
 
 
-def search(query: str, limit: int, timeout: float, user_id: str = "") -> list[dict]:
+def list_pinned(user_id: str) -> list[dict]:
+    """分页读取本人全部固定规则，不依赖向量服务或当前 Embedding 模型。"""
+    if not user_id.strip():
+        raise ValueError("missing user")
+    with _lock:
+        client, models = _store()
+        try:
+            if not client.collection_exists(COLLECTION):
+                return []
+            query_filter = models.Filter(must=[
+                models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id)),
+                models.FieldCondition(key="pinned", match=models.MatchValue(value=True)),
+            ])
+            records = []
+            offset = None
+            while True:
+                points, offset = client.scroll(
+                    COLLECTION, scroll_filter=query_filter, offset=offset,
+                    limit=256, with_payload=True, with_vectors=False,
+                )
+                for point in points:
+                    payload = point.payload or {}
+                    if payload.get("user_id") == user_id and payload.get("pinned") is True:
+                        records.append({key: payload.get(key, "")
+                                        for key in ("user_id", "content", "created_at")})
+                if offset is None:
+                    return sorted(records, key=lambda item: item["created_at"])
+        except Exception as exc:
+            raise MemoryError("memory_store_unavailable") from exc
+
+
+def search(query: str, limit: int, timeout: float, user_id: str = "", exclude_pinned: bool = False) -> list[dict]:
     """按语义查询全部用户或指定用户的当前模型记忆。"""
     vector = _embedding(query, timeout)
     with _lock:
         client, models = _store(len(vector))
         try:
-            result = client.query_points(COLLECTION, query=vector, query_filter=_filter(models, user_id),
+            query_filter = _filter(models, user_id)
+            if exclude_pinned:
+                query_filter.must_not = [models.FieldCondition(key="pinned", match=models.MatchValue(value=True))]
+            result = client.query_points(COLLECTION, query=vector, query_filter=query_filter,
                                          limit=limit, with_payload=True).points
         except Exception as exc:
             raise MemoryError("memory_store_unavailable") from exc
     return [{"user_id": item.payload["user_id"], "content": item.payload["content"],
-             "created_at": item.payload["created_at"], "score": round(item.score, 6)} for item in result]
+             "created_at": item.payload["created_at"], "pinned": item.payload.get("pinned", False),
+             "score": round(item.score, 6)} for item in result]
 
 
 def delete(user_id: str, query: str, timeout: float) -> int:

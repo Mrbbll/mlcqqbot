@@ -522,6 +522,7 @@ async def _agent_reply_text(
         current_message_id=current_message_id,
         referenced_message_ids=[_group_reference_id(message)],
         current_message_received_at=received_at,
+        context_message_ids=[item.get("message_id", "") for item in group_context],
     ) if group_id else [
         {
             **attachment,
