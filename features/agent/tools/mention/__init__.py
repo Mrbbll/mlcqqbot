@@ -35,7 +35,7 @@ def mention_group_member(args: MentionGroupMemberArgs, context: ToolContext) -> 
 TOOLS = (
     ToolSpec(
         "mention_group_member",
-        "仅当用户当前明确要求在回复中 @ 人时，从当前或近期消息的 user_id 或原生 <@ID>/<@!ID> 标记中取得目标 ID，并将 ID 值填入 user_id 参数；不按昵称猜测或编造 ID。最终回复会自动附加真实提及。",
+        "根据回复需要自主决定是否 @ 成员，从当前或近期消息的 user_id 或原生 <@ID>/<@!ID> 标记中取得目标 ID，并将 ID 值填入 user_id 参数；不按昵称猜测或编造 ID。最终回复会自动附加真实提及。",
         MentionGroupMemberArgs,
         mention_group_member,
     ),

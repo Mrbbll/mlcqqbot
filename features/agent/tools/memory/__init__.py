@@ -73,5 +73,5 @@ def delete_memory(args: DeleteMemoryArgs, context: ToolContext) -> ToolResult:
 TOOLS = (
     ToolSpec("add_memory", "记忆 RAG：将当前发言者提供的有长期价值的信息向量化并保存。", AddMemoryArgs, add_memory),
     ToolSpec("search_memory", "记忆 RAG：按向量语义检索所有用户或指定用户的长期记忆，返回归属和时间。", SearchMemoryArgs, search_memory),
-    ToolSpec("delete_memory", "记忆 RAG：用户明确要求时删除指定用户语义相似度至少 0.85 的全部匹配记忆。", DeleteMemoryArgs, delete_memory),
+    ToolSpec("delete_memory", "记忆 RAG：根据任务及上下文自主判断是否需要删除记忆，删除指定用户语义相似度至少 0.85 的全部匹配记忆；准确指定用户和待删除内容，不扩大范围。", DeleteMemoryArgs, delete_memory),
 )

@@ -52,6 +52,7 @@ from external_tools.qq.botpy_compat import (
 )
 from external_tools.qq.media_sender import send_group_image
 from features.file_sender import send_group_file
+from features.reply_delivery import ReplyDelivery, ReplyDeliveryError
 
 
 install_group_message_parser_compat()
@@ -358,7 +359,8 @@ async def handle_command_message(
     force_agent: bool = False,
     received_at: float | None = None,
 ) -> bool:
-    """执行文本命令或 agent 兜底，并返回是否已经发送回复。"""
+    """执行命令或 Agent；返回是否已处理，发送失败也不重复触发 Agent。"""
+    delivery = ReplyDelivery(message, is_group=is_group, group_id=group_id, api=api, received_at=received_at)
     try:
         emoji_image_path = None
         emoji_metadata = None
@@ -424,7 +426,7 @@ async def handle_command_message(
             if "keyboard" in payload:
                 scope = "group=%s" % group_id if is_group else "c2c"
                 _log.info("[内联键盘] %s user=%s", scope, user_id)
-            reply_result = await message.reply(**payload)
+            reply_result = await delivery.reply(**payload)
             if is_group and group_id:
                 record_bot_reply(group_id, reply_text, reply_result)
             elif private_agent_reply:
@@ -436,7 +438,7 @@ async def handle_command_message(
             else:
                 try:
                     image_result = await send_group_image(
-                        api or getattr(message, "_api", None),
+                        delivery,
                         group_id,
                         emoji_image_path,
                         str(getattr(message, "id", "") or ""),
@@ -462,21 +464,28 @@ async def handle_command_message(
             for file_path in file_paths[:1]:
                 try:
                     result = await send_group_file(
-                        api or getattr(message, "_api", None), group_id, file_path,
+                        delivery, group_id, file_path,
                         str(getattr(message, "id", "") or ""), message_sequence=sequence,
                     )
                     if is_group and group_id:
                         record_bot_reply(group_id, f"[已发送文件] {file_path.name}", result)
+                except ReplyDeliveryError:
+                    _log.exception("Agent 文件消息未确认送达，不重复发送: group=%s", group_id)
                 except Exception:
                     _log.exception("Agent 文件发送失败: group=%s", group_id)
                     failure = "文件发送失败，尚未确认送达；请检查 QQ 普通文件发送权限、文件大小及服务日志。"
-                    failure_result = await message.reply(content=failure, msg_seq=sequence + 1)
+                    failure_result = await delivery.reply(content=failure, msg_seq=sequence + 1)
                     if is_group and group_id:
                         record_bot_reply(group_id, failure, failure_result)
         return True
+    except ReplyDeliveryError:
+        return True
     except Exception:
         _log.error("处理消息异常: %s", traceback.format_exc())
-        await message.reply(**_ERROR_REPLY)
+        try:
+            await delivery.reply(**_ERROR_REPLY)
+        except ReplyDeliveryError:
+            return True
         return True
 
 
