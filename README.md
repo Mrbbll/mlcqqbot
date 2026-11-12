@@ -149,9 +149,13 @@ ONEBOT_WS_HOST=127.0.0.1
 ONEBOT_WS_PORT=8081
 ONEBOT_WS_ACCESS_TOKEN=
 ONEBOT_WS_HEARTBEAT=30
+# 可选：真实QQ群号=该群OpenID；多个映射用英文逗号分隔
+ONEBOT_GROUP_MAPPINGS=123456789=openid_group_001
 ```
 
-MCDR ImAPI 配置为 `ws_client`，连接地址填写 `ws://127.0.0.1:8081`。如需令牌校验，在本项目的 `ONEBOT_WS_ACCESS_TOKEN` 和 ImAPI 的 `access_token` 中设置相同值；若 MCDR 与机器人不在同一主机，将 `ONEBOT_WS_HOST` 改为可被 MCDR 访问的监听地址，并调整 `ws_url`，同时设置访问令牌。机器人会转发所有收到的群消息；QQ 开放平台仍决定事件订阅范围，普通群消息需有 `GROUP_MESSAGE_CREATE` 全量消息事件权限。昵称按参考实现从消息发送者和 `@` 对象的 `username` 累积映射；事件若缺少昵称，会暂用成员 OpenID。OneBot 的 `group_id`、`user_id` 是由 BotPy OpenID 生成的稳定数字别名，原始 OpenID 保存在附加字段中。
+MCDR ImAPI 配置为 `ws_client`，连接地址填写 `ws://127.0.0.1:8081`。如需令牌校验，在本项目的 `ONEBOT_WS_ACCESS_TOKEN` 和 ImAPI 的 `access_token` 中设置相同值；若 MCDR 与机器人不在同一主机，将 `ONEBOT_WS_HOST` 改为可被 MCDR 访问的监听地址，并调整 `ws_url`，同时设置访问令牌。机器人会转发所有收到的群消息；QQ 开放平台仍决定事件订阅范围，普通群消息需有 `GROUP_MESSAGE_CREATE` 全量消息事件权限。昵称按参考实现从消息发送者和 `@` 对象的 `username` 累积映射；事件若缺少昵称，会暂用成员 OpenID。默认 OneBot 的 `group_id`、`user_id` 是由 BotPy OpenID 生成的稳定数字别名，原始 OpenID 保存在附加字段中。
+
+游戏端可通过 OneBot `send_group_msg`（或群消息形式的 `send_msg`）请求主动发送进退服等文本；正文由游戏端提供。目标群须先填入 `QQ_GROUP_OPENIDS`。若 ImShareChat 使用真实 QQ 群号，在 `ONEBOT_GROUP_MAPPINGS` 配置群号与 OpenID 的对应关系；同一群的 OneBot 事件也会使用该群号。未配置映射时，请求中的 `group_id` 使用该群 OpenID 或群消息事件中的数字别名。配置变更后重启机器人。仅支持纯文本及 text 消息段，QQ 平台的主动消息权限和额度仍适用。 排查时在 `logs/mlcbot.log` 查找 `OneBot WebSocket 客户端已连接`、`收到 OneBot API 请求` 和 `OneBot 群消息`：已连接但没有发送请求，需检查游戏端是否启用了进退服转发及目标群；`/event` 仅用于事件推送，发送 API 应连接 `/` 或 `/api`。
 
 Gitee 监听仅处理配置用户本人发起的公开 Push。`GITEE_NOTIFY_GROUPS` 填 QQ 群 OpenID；通知会回复该群最近五分钟内收到的消息。没有可用消息时通知会暂存，等群内有新消息后再发送。单条群消息最多作为 5 条被动回复的锚点；达到上限后队列会等待新的群消息。队列保存在进程内存中，重启后清空。每个群每分钟最多发送一条提交通知；冷却期间新发现的活动会跳过。`GITEE_TOKEN` 和 `GITEE_POLL_INTERVAL` 可选，轮询间隔最小为 5 秒。
 

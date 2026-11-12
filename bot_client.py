@@ -81,7 +81,7 @@ class MLCBot(Client):
             _log.exception("表情包收藏库加载失败")
         await start_gitee_monitor()
         await start_bilibili_monitor()
-        await start_onebot_ws_server()
+        await start_onebot_ws_server(self.api)
 
     async def on_group_add_robot(self, event):
         """记录机器人加入群聊的事件。"""

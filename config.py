@@ -172,6 +172,8 @@ AGENT_LOG_MODEL_RESPONSE = os.getenv("AGENT_LOG_MODEL_RESPONSE", "").strip().cas
 QQ_GROUP_OPENIDS = get_env_list("QQ_GROUP_OPENIDS")
 
 # ==================== OneBot v11 QQ 群消息转发 ====================
+# 格式：QQ群号=群OpenID，多个映射以英文逗号分隔。
+ONEBOT_GROUP_MAPPINGS = get_env_list("ONEBOT_GROUP_MAPPINGS")
 ONEBOT_WS_HOST = os.getenv("ONEBOT_WS_HOST", "127.0.0.1").strip() or "127.0.0.1"
 ONEBOT_WS_PORT = get_env_int("ONEBOT_WS_PORT", 8081, 1, 65535)
 ONEBOT_WS_ACCESS_TOKEN = os.getenv("ONEBOT_WS_ACCESS_TOKEN", "").strip()

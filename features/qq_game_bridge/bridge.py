@@ -11,6 +11,8 @@ from urllib.parse import parse_qs, urlsplit
 from websockets.exceptions import ConnectionClosed
 from websockets.legacy.server import WebSocketServerProtocol, serve
 
+from features.game_notifications import onebot_group_id, send_group_message
+
 from config import (
     ONEBOT_WS_ACCESS_TOKEN,
     ONEBOT_WS_HEARTBEAT,
@@ -22,6 +24,7 @@ from config import (
 
 _log = logging.getLogger("mlcbot")
 _server = None
+_qq_api = None
 _clients: dict[WebSocketServerProtocol, str] = {}
 _EVENT_PATHS = {"/", "/event", "/onebot/v11/ws"}
 _API_PATHS = {"/", "/api", "/onebot/v11/ws"}
@@ -32,9 +35,10 @@ _MENTION_PATTERN = re.compile(r"<@!?([\w-]+)>")
 _nickname_cache: OrderedDict[str, str] = OrderedDict()
 
 
-async def start_onebot_ws_server() -> None:
+async def start_onebot_ws_server(api=None) -> None:
     """在 botpy 事件循环中启动 OneBot v11 正向 WebSocket 服务端。"""
-    global _server
+    global _server, _qq_api
+    _qq_api = api
     if _server is not None:
         return
     try:
@@ -74,7 +78,7 @@ async def forward_group_message(message) -> None:
     author = getattr(message, "author", None)
     member_openid = str(getattr(author, "member_openid", "") or "")
     user_id = _stable_numeric_id("user", member_openid or "unknown")
-    group_id = _stable_numeric_id("group", group_openid)
+    group_id = onebot_group_id(group_openid, _stable_numeric_id)
     message_id = _stable_numeric_id(
         "message",
         str(getattr(message, "id", "") or f"{time.time_ns()}:{group_openid}:{member_openid}"),
@@ -127,6 +131,7 @@ async def _handle_client(websocket: WebSocketServerProtocol, path: str) -> None:
     parsed_path = urlsplit(path)
     endpoint = (parsed_path.path or "/").rstrip("/") or "/"
     if endpoint not in _ALLOWED_PATHS:
+        _log.warning("拒绝 OneBot WebSocket 连接：不支持的路径 path=%s", endpoint)
         await websocket.close(code=1008, reason="Unsupported OneBot WebSocket path")
         return
     if not _is_authorized(websocket, parsed_path.query):
@@ -150,9 +155,11 @@ async def _handle_client(websocket: WebSocketServerProtocol, path: str) -> None:
                     await websocket.send(json.dumps(_heartbeat_event(), ensure_ascii=False))
                 continue
             if endpoint in _API_PATHS:
-                response = _action_response(raw_request)
+                response = await _action_response(raw_request)
                 if response is not None:
                     await websocket.send(json.dumps(response, ensure_ascii=False))
+            else:
+                _log.warning("OneBot /event 连接收到数据，但该路径不接受 API 请求；请使用 / 或 /api")
     except ConnectionClosed:
         _log.info("OneBot WebSocket 客户端已断开 path=%s", endpoint)
     except Exception:
@@ -174,23 +181,42 @@ def _is_authorized(websocket: WebSocketServerProtocol, query: str) -> bool:
     ) or query_token == ONEBOT_WS_ACCESS_TOKEN
 
 
-def _action_response(raw_request) -> dict | None:
-    """为基础 OneBot 状态查询返回响应，其余动作明确报告不支持。"""
+async def _action_response(raw_request) -> dict | None:
+    """处理群消息发送和基础状态查询，返回 OneBot 响应。"""
     try:
         request = json.loads(raw_request)
     except (TypeError, ValueError):
+        _log.warning("收到无法解析的 OneBot 请求：无效 JSON")
         return None
-    if not isinstance(request, dict) or not request.get("action"):
+    if not isinstance(request, dict) or not isinstance(request.get("action"), str) or not request["action"]:
+        _log.warning("收到无法处理的 OneBot 请求：缺少有效 action")
         return None
 
     action = request["action"]
+    _log.info("收到 OneBot API 请求 action=%s", action[:100])
     response = {
         "status": "ok",
         "retcode": 0,
         "data": None,
         "echo": request.get("echo"),
     }
-    if action == "get_login_info":
+    if action in ("send_group_msg", "send_msg"):
+        params = request.get("params", {})
+        if action == "send_msg" and (not isinstance(params, dict) or params.get("message_type", "group") != "group"):
+            _log.warning("OneBot 消息发送请求被拒绝：仅支持群消息")
+            response.update(status="failed", retcode=1400, message="仅支持群消息")
+            return response
+        try:
+            message_id = await send_group_message(_qq_api, params, _stable_numeric_id)
+            response["data"] = {"message_id": message_id}
+            _log.info("OneBot 群消息主动发送成功 message_id=%s", message_id)
+        except ValueError as exc:
+            _log.warning("OneBot 群消息发送请求被拒绝：%s", exc)
+            response.update(status="failed", retcode=1400, message=str(exc))
+        except Exception:
+            _log.exception("OneBot 群消息主动发送失败")
+            response.update(status="failed", retcode=1500, message="QQ 消息发送失败或未确认")
+    elif action == "get_login_info":
         response["data"] = {"user_id": _self_id(), "nickname": "QQ Bot"}
     elif action == "get_status":
         response["data"] = {"online": True, "good": True}
@@ -201,7 +227,7 @@ def _action_response(raw_request) -> dict | None:
             "protocol_version": "v11",
         }
     else:
-        _log.debug("收到未支持的 OneBot API action: %s", action)
+        _log.warning("收到未支持的 OneBot API action: %s", action[:100])
         response.update(status="failed", retcode=1404)
     return response
 
